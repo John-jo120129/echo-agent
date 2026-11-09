@@ -81,8 +81,9 @@ def _cosine(a, b):
     return dot / (na * nb)
 
 
-def search(query, top=3):
-    """检索与问题最相关的知识块，返回给 agent 当参考。"""
+def search(query, top=5):
+    """检索与问题最相关的知识块，返回给 agent 当参考。
+    命中一块时，把同文件的相邻块也带上——避免只命中标题块而漏掉正文。"""
     if not os.path.exists(INDEX_PATH):
         return "知识库还没建索引，请先运行 /reindex"
     with open(INDEX_PATH, "r", encoding="utf-8") as f:
@@ -92,6 +93,19 @@ def search(query, top=3):
     qv = llm.embed([query])
     if not qv:
         return "检索失败：请确认 Ollama 在运行"
-    scored = sorted(items, key=lambda it: -_cosine(qv[0], it["vec"]))[:top]
-    return "\n---\n".join(
-        "【来自 %s】%s" % (it["file"], it["chunk"]) for it in scored)
+    scored = sorted(enumerate(items),
+                    key=lambda p: -_cosine(qv[0], p[1]["vec"]))[:top]
+    out = []
+    used = set()
+    for idx, it in scored:
+        if idx in used:
+            continue
+        used.add(idx)
+        seg = it["chunk"]
+        for di in (-1, 1):   # 带上同文件的前后相邻块
+            j = idx + di
+            if 0 <= j < len(items) and items[j]["file"] == it["file"] and j not in used:
+                used.add(j)
+                seg += "\n\n" + items[j]["chunk"]
+        out.append("【来自 %s】%s" % (it["file"], seg))
+    return "\n---\n".join(out)
