@@ -20,6 +20,7 @@ import html as html_mod
 
 from core import memory
 from core import rag
+from core import skills
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -250,10 +251,37 @@ TOOLS = [
     }},
     {"type": "function", "function": {
         "name": "remember",
-        "description": "把用户的重要信息写入长期记忆，重启不丢。用户说'记住'时必须用。",
+        "description": "把用户的重要信息写入短期记忆，重启不丢。用户说'记住'时必须用。",
         "parameters": {"type": "object",
                        "properties": {"content": {"type": "string", "description": "一句话概括要记的内容"}},
                        "required": ["content"]}
+    }},
+    {"type": "function", "function": {
+        "name": "remember_long",
+        "description": "把重要、长期有效的信息（人生目标、长期约定、重大事件）存入长期记忆。用户说'记住我的长期目标/长期计划'时调用。",
+        "parameters": {"type": "object",
+                       "properties": {"content": {"type": "string", "description": "要长期记住的内容"}},
+                       "required": ["content"]}
+    }},
+    {"type": "function", "function": {
+        "name": "remember_profile",
+        "description": "把用户的稳定个人信息存入档案。姓名、年龄、身份、城市、职业、学校等。key 是字段名（如'姓名'），value 是值（如'溯游'）。用户说'我叫X/我今年X岁/我是X'时调用。",
+        "parameters": {"type": "object",
+                       "properties": {"key": {"type": "string", "description": "字段名，如 姓名/年龄/身份/城市"},
+                                      "value": {"type": "string", "description": "值，如 溯游/14/初中生"}},
+                       "required": ["key", "value"]}
+    }},
+    {"type": "function", "function": {
+        "name": "list_skills",
+        "description": "列出当前可用的技能（Skill）清单。做专业任务（如设计网页）前先看有哪些技能。",
+        "parameters": {"type": "object", "properties": {}}
+    }},
+    {"type": "function", "function": {
+        "name": "use_skill",
+        "description": "加载某个技能的完整规范/工作手册，照着它执行任务。",
+        "parameters": {"type": "object",
+                       "properties": {"name": {"type": "string", "description": "技能名，先 list_skills 查看"}},
+                       "required": ["name"]}
     }},
     {"type": "function", "function": {
         "name": "add_todo",
@@ -294,6 +322,12 @@ _IMPL = {
     "search_kb": t_search_kb,
     "web_search": t_web_search,
     "remember": lambda a: memory.add_fact(a.get("content", "")),
+    "remember_long": lambda a: memory.add_long_term(a.get("content", "")),
+    "remember_profile": lambda a: memory.set_profile(a.get("key", ""), a.get("value", "")),
+    "list_skills": lambda a: "\n".join(
+        "- %s：%s（%s）" % (s["name"], s["description"], s["when"])
+        for s in skills.list_skills()) or "还没有安装任何技能",
+    "use_skill": lambda a: skills.load_skill(a.get("name", "")),
     "add_todo": lambda a: memory.add_todo(a.get("task", "")),
     "write_diary": lambda a: memory.write_diary(a.get("title", ""), a.get("content", "")),
     "get_time": lambda a: memory.now_str(),

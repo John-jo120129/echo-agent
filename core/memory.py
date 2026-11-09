@@ -1,10 +1,17 @@
 # -*- coding: utf-8 -*-
-"""core/memory.py —— 记忆系统
-agent 的长期记忆全部存在 data/ 文件夹，关机不丢：
-  facts.json    长期事实记忆（"用户喜欢喝可乐"）
-  todo.json     待办清单
-  diary/        日记
-  history.json  跨会话对话历史（最近 30 条自动续上）
+"""core/memory.py —— 记忆系统（四层 + 记忆养成）
+
+记忆分四层，全部存在 data/ 文件夹，关机不丢：
+  working   → history.json   当前/最近对话（工作记忆）
+  short     → facts.json     短期事实记忆（"我喜欢喝可乐"）
+  long      → long_term.json 长期重要记忆（自动总结归档）
+  user      → user_profile.json  用户档案（身份、偏好，最高优先级）
+
+记忆养成（无限上下文）：
+  每次会话退出时，把本次对话自动总结成记忆，追加写进
+  data/memories/YYYY-MM-DD.md；越攒越多 = "越肥"。
+  这些记忆文件纳入知识库索引，对话时按相关性检索注入，
+  从而突破大模型的上下文长度限制，实现"无限上下文"。
 """
 import json
 import os
@@ -17,6 +24,9 @@ FACTS_PATH = os.path.join(DATA_DIR, "facts.json")
 TODO_PATH = os.path.join(DATA_DIR, "todo.json")
 DIARY_DIR = os.path.join(DATA_DIR, "diary")
 HISTORY_PATH = os.path.join(DATA_DIR, "history.json")
+LONG_TERM_PATH = os.path.join(DATA_DIR, "long_term.json")
+PROFILE_PATH = os.path.join(DATA_DIR, "user_profile.json")
+MEMORIES_DIR = os.path.join(DATA_DIR, "memories")
 
 # 会话内提醒（存内存，退出即消失）
 _reminders = []
@@ -112,3 +122,63 @@ def check_reminders():
                 due.append(r["text"])
                 _reminders.remove(r)
     return due
+
+
+# ---------- 用户档案（最高优先级） ----------
+def load_profile():
+    return _load(PROFILE_PATH, {})
+
+
+def set_profile(key, value):
+    p = load_profile()
+    p[key] = value
+    _save(PROFILE_PATH, p)
+    return "已记住你的「%s」" % key
+
+
+def remove_profile(key):
+    p = load_profile()
+    if key in p:
+        del p[key]
+        _save(PROFILE_PATH, p)
+        return "已忘记你的「%s」" % key
+    return "档案里没有「%s」" % key
+
+
+# ---------- 长期记忆 ----------
+def load_long_term():
+    return _load(LONG_TERM_PATH, [])
+
+
+def add_long_term(text, kind="memory"):
+    items = load_long_term()
+    items.append({"date": today_str(), "kind": kind, "text": text})
+    _save(LONG_TERM_PATH, items)
+    return "已存入长期记忆（共 %d 条）" % len(items)
+
+
+# ---------- 记忆养成：会话归档为记忆文件 ----------
+def write_memory_md(title, text):
+    """把一条记忆追加写进 data/memories/YYYY-MM-DD.md（供检索，实现无限上下文）。"""
+    os.makedirs(MEMORIES_DIR, exist_ok=True)
+    path = os.path.join(MEMORIES_DIR, "%s.md" % today_str())
+    with open(path, "a", encoding="utf-8") as f:
+        f.write("\n## %s（%s）\n%s\n" % (title, now_str(), text))
+    return path
+
+
+def collect_all_memories():
+    """汇总所有记忆，供 3D 记忆星球展示用。"""
+    result = {"profile": [], "facts": [], "long_term": [], "memories": []}
+    for k, v in load_profile().items():
+        result["profile"].append({"k": k, "v": v})
+    for f in load_facts():
+        result["facts"].append(f)
+    for l in load_long_term():
+        result["long_term"].append(l)
+    if os.path.isdir(MEMORIES_DIR):
+        for fn in sorted(os.listdir(MEMORIES_DIR)):
+            if fn.endswith(".md"):
+                with open(os.path.join(MEMORIES_DIR, fn), "r", encoding="utf-8") as f:
+                    result["memories"].append({"file": fn, "text": f.read()[:600]})
+    return result

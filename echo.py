@@ -17,7 +17,7 @@ import json
 import os
 import sys
 
-from core import llm, memory, rag, tools
+from core import llm, memory, rag, skills, tools
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
@@ -49,19 +49,42 @@ def load_config():
 
 
 def build_system(cfg):
+    """分层注入：人设 → 用户档案(最高) → 长期记忆 → 短期记忆 → 待办 → 技能摘要。"""
     parts = []
     if os.path.exists(PERSONA_PATH):
         with open(PERSONA_PATH, "r", encoding="utf-8") as f:
             parts.append(f.read())
     parts.append("当前时间：%s" % memory.now_str())
+
+    # 用户档案（最高优先级，稳定的身份信息）
+    profile = memory.load_profile()
+    if profile:
+        parts.append("【用户档案】" + "；".join("%s=%s" % (k, v) for k, v in profile.items()))
+
+    # 长期记忆
+    long_term = memory.load_long_term()
+    if long_term:
+        parts.append("【长期记忆】" + "；".join(
+            "(%s)%s" % (l["date"], l["text"]) for l in long_term[-20:]))
+
+    # 短期事实记忆
     facts = memory.load_facts()
     if facts:
-        parts.append("关于用户的长期记忆（最近 20 条）：" +
-                     "；".join(f["text"] for f in facts[-20:]))
+        parts.append("【短期记忆】" + "；".join(f["text"] for f in facts[-20:]))
+
+    # 待办
     todos = [t for t in memory.load_todos() if not t["done"]]
     if todos:
         parts.append("用户未完成的待办：" +
                      "；".join("[%d]%s" % (t["id"], t["task"]) for t in todos))
+
+    # 技能摘要
+    sk = skills.list_skills()
+    if sk:
+        parts.append("【可用技能】做专业任务前先 list_skills 或 use_skill 加载规范：\n" +
+                     "\n".join("- %s：%s（%s）" % (s["name"], s["description"], s["when"])
+                               for s in sk))
+
     return "\n\n".join(parts)
 
 
@@ -102,11 +125,23 @@ def local_command(user, cfg):
         else:
             print("回声> 当前模型：%s。用法：/model 模型名（如 qwen2.5:14b）" % cfg["model"])
     elif cmd == "/memory":
+        p = memory.load_profile()
+        if p:
+            print("  【档案】")
+            for k, v in p.items():
+                print("    · %s：%s" % (k, v))
+        lt = memory.load_long_term()
+        if lt:
+            print("  【长期记忆】")
+            for l in lt[-20:]:
+                print("    · (%s) %s" % (l["date"], l["text"]))
         facts = memory.load_facts()
-        if not facts:
+        if facts:
+            print("  【短期记忆】")
+            for f in facts[-20:]:
+                print("    · (%s) %s" % (f["date"], f["text"]))
+        if not p and not lt and not facts:
             print("回声> 还没有记忆，说'记住：xxx'即可")
-        for f in facts:
-            print("  · (%s) %s" % (f["date"], f["text"]))
     elif cmd == "/forgetall":
         memory._save(memory.FACTS_PATH, [])
         print("回声> 记忆已清空。")
@@ -122,6 +157,20 @@ def local_command(user, cfg):
     elif cmd == "/reindex":
         kb_dirs = [os.path.join(BASE_DIR, d) for d in cfg.get("kb_dirs", ["kb"])]
         print("回声> " + rag.build_index(kb_dirs))
+    elif cmd == "/profile":
+        p = memory.load_profile()
+        if not p:
+            print("回声> 档案还是空的。说'记住我的名字是X'即可，或 /remember_profile 键 值")
+        for k, v in p.items():
+            print("  · %s：%s" % (k, v))
+    elif cmd == "/star":
+        path = generate_star_html()
+        print("回声> 记忆星球已生成：%s" % path)
+        try:
+            import webbrowser
+            webbrowser.open("file:///" + path.replace("\\", "/"))
+        except Exception:
+            print("回声> 请手动用浏览器打开上面的文件")
     elif cmd == "/reset":
         memory.save_history([])
         print("回声> 对话历史已清空。")
@@ -133,14 +182,17 @@ def local_command(user, cfg):
 HELP_TEXT = """可用指令：
   /auto            切换危险命令自动确认（新手别开）
   /model 名字      换大脑模型（如 /model qwen2.5:14b）
-  /reindex         重建知识库索引（kb/ 改动后用）
-  /time /memory /remember /forgetall /todo /addtodo /done /reset /exit
+  /reindex         重建知识库索引（含记忆归档，改动后用）
+  /star            生成并打开 3D 记忆星球（可视化所有记忆）
+  /profile         查看用户档案
+  /memory          查看全部记忆（档案/长期/短期）
+  /time /remember /forgetall /todo /addtodo /done /reset /exit
 
 直接说任务就行，例如：
-  "帮我在 workspace 里写一个网页版贪吃蛇，写完自己测试"
-  "看看 kb 知识库里关于 X 的内容，总结给我"
-  "抓取 https://xxx 的正文，把要点存成笔记"
-  "记住：我每周五有英语课" """
+  "帮我做一个好看的网页版个人主页"（会自动加载网页设计技能）
+  "记住我的名字是X、我喜欢Y"（会自动分档案/短期记忆）
+  "我之前是不是说过Z？"（会检索归档记忆，实现无限上下文）
+  "看看 kb 知识库里关于 X 的内容，总结给我" """
 
 
 def chat(cfg):
@@ -161,23 +213,29 @@ def chat(cfg):
             user = input("\n你> ").strip()
         except (EOFError, KeyboardInterrupt):
             print("\n回声> 再见～")
+            summarize_and_archive(cfg, history)
             break
         if not user:
             continue
 
         result = local_command(user, cfg)
         if result == "EXIT":
+            summarize_and_archive(cfg, history)
             break
         if result:
             memory.check_reminders()
             continue
 
+        # 记忆类明确意图兜底（可靠写入，不赌模型自觉）
+        if quick_memory(user, history):
+            continue
+
         # ===== 自主任务循环（agent 的心脏）=====
         content = user
-        if "知识库" in user:   # 提到知识库就自动先检索，不指望模型自觉
-            kb_hit = rag.search(user)
+        if any(w in user for w in ("知识库", "记忆", "说过", "之前", "还记得")):
+            kb_hit = rag.search(user)   # 检索知识库 + 归档记忆，实现无限上下文
             if not kb_hit.startswith(("知识库", "检索失败")):
-                content = user + "\n\n[知识库检索结果（回答必须基于此内容）]\n" + kb_hit
+                content = user + "\n\n[检索到的相关资料（回答必须基于此内容，找不到就说没有）]\n" + kb_hit
         history.append({"role": "user", "content": content})
         messages = [{"role": "system", "content": build_system(cfg)}] + history[-30:]
         try:
@@ -211,6 +269,194 @@ def chat(cfg):
             print("       若是连不上大脑：确认 Ollama 在跑（ollama serve），"
                   "模型存在（ollama list）")
         memory.save_history(history)
+
+
+def summarize_and_archive(cfg, history):
+    """退出时把本次对话总结成记忆，写入 data/memories/，实现"无限上下文"。
+    记忆越攒越多 = 记忆星球越"肥"，久远的记忆靠检索找回，突破上下文长度限制。"""
+    if len(history) < 2:
+        return
+    msgs = [
+        {"role": "system", "content":
+         "把下面这段对话总结成 1-3 条值得长期记住的记忆，每行一条，格式「- 记忆内容」。"
+         "只写记忆本身，不要写'用户说'或'助手'。若没有值得记的内容，只输出：无。"},
+        {"role": "user", "content": json.dumps(history[-20:], ensure_ascii=False)}
+    ]
+    try:
+        m = llm.call_llm(cfg, msgs, tools=[])
+        text = (m.get("content") or "").strip()
+    except Exception:
+        return
+    if not text or text == "无":
+        return
+    n = 0
+    for line in text.splitlines():
+        line = line.strip().lstrip("-·* ").strip()
+        if line and len(line) > 4:
+            memory.write_memory_md("会话记忆", line)
+            n += 1
+    if n:
+        print("  [记忆星球已更新：本轮对话归档了 %d 条记忆]" % n)
+
+
+STAR_TEMPLATE = r"""<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>回声 · 记忆星球</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#fbfbfc;
+    font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;}
+  #scene{position:fixed;inset:0;}
+  #hud{position:fixed;top:18px;left:20px;z-index:10;pointer-events:none;}
+  #hud h1{font-size:20px;margin:0 0 4px;color:#1a1a1c;font-weight:600;}
+  #hud p{margin:0;font-size:13px;color:#6b6b72;}
+  #legend{position:fixed;bottom:18px;left:20px;z-index:10;font-size:12px;color:#6b6b72;
+    background:rgba(255,255,255,.85);padding:8px 12px;border-radius:10px;line-height:1.8;}
+  #legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin:0 6px 0 0;}
+  #tooltip{position:fixed;display:none;z-index:20;max-width:320px;background:#1a1a1c;
+    color:#fff;font-size:13px;padding:8px 12px;border-radius:8px;pointer-events:none;
+    line-height:1.5;box-shadow:0 4px 14px rgba(0,0,0,.18);}
+</style>
+</head>
+<body>
+<div id="scene"></div>
+<div id="hud"><h1>回声 · 记忆星球</h1><p>拖拽旋转 · 滚轮缩放 · 悬停看记忆</p></div>
+<div id="legend">
+  <i style="background:#d4a017"></i>用户档案
+  <i style="background:#378add"></i>长期记忆
+  <i style="background:#1d9e75"></i>短期记忆
+  <i style="background:#7f77dd"></i>会话记忆
+</div>
+<div id="tooltip"></div>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+const DATA = __DATA__;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.1, 100);
+camera.position.set(0, 1.5, 6.5); camera.lookAt(0,0,0);
+const renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth, innerHeight);
+document.getElementById('scene').appendChild(renderer.domElement);
+
+scene.add(new THREE.AmbientLight(0xffffff, 1.1));
+const key = new THREE.DirectionalLight(0xffffff, 1.4); key.position.set(6,6,6); scene.add(key);
+const back = new THREE.DirectionalLight(0xffffff, 0.5); back.position.set(-4,-2,-4); scene.add(back);
+
+const core = new THREE.Mesh(
+  new THREE.SphereGeometry(1, 48, 48),
+  new THREE.MeshPhongMaterial({color:0x4f46e5, transparent:true, opacity:0.10}));
+scene.add(core);
+const wire = new THREE.Mesh(
+  new THREE.SphereGeometry(1, 24, 24),
+  new THREE.MeshBasicMaterial({color:0x4f46e5, wireframe:true, transparent:true, opacity:0.16}));
+scene.add(wire);
+
+const group = new THREE.Group(); scene.add(group);
+const colors = {0:0xd4a017, 1:0x378add, 2:0x1d9e75, 3:0x7f77dd};
+const radii = {0:0.95, 1:1.35, 2:1.75, 3:2.15};
+const meshes = [];
+
+function fibonacci(n, radius){
+  const out = []; const g = Math.PI*(3-Math.sqrt(5));
+  for(let i=0;i<n;i++){
+    const y = n>1 ? 1 - (i/(n-1))*2 : 0;
+    const r = Math.sqrt(Math.max(0,1-y*y));
+    const t = g*i;
+    out.push([Math.cos(t)*r*radius, y*radius, Math.sin(t)*r*radius]);
+  }
+  return out;
+}
+const byLayer = {};
+DATA.forEach(p => { (byLayer[p.layer] = byLayer[p.layer] || []).push(p); });
+Object.keys(byLayer).forEach(layer => {
+  const pos = fibonacci(byLayer[layer].length, radii[layer]);
+  byLayer[layer].forEach((p, i) => {
+    const m = new THREE.Mesh(
+      new THREE.SphereGeometry(0.055, 16, 16),
+      new THREE.MeshPhongMaterial({color: colors[layer]}));
+    m.position.set(pos[i][0], pos[i][1], pos[i][2]);
+    m.userData = {text: p.text};
+    group.add(m); meshes.push(m);
+  });
+});
+
+let dragging = false, px = 0, py = 0;
+renderer.domElement.addEventListener('pointerdown', e => {dragging=true; px=e.clientX; py=e.clientY;});
+addEventListener('pointermove', e => {
+  if(dragging){ group.rotation.y += (e.clientX-px)*0.005; group.rotation.x += (e.clientY-py)*0.005; px=e.clientX; py=e.clientY; }
+});
+addEventListener('pointerup', () => dragging=false);
+addEventListener('wheel', e => {
+  camera.position.z = Math.max(2.6, Math.min(12, camera.position.z + e.deltaY*0.005));
+});
+
+const raycaster = new THREE.Raycaster(), mouse = new THREE.Vector2();
+const tip = document.getElementById('tooltip');
+addEventListener('pointermove', e => {
+  if(dragging) return;
+  mouse.x = (e.clientX/innerWidth)*2-1; mouse.y = -(e.clientY/innerHeight)*2+1;
+  raycaster.setFromCamera(mouse, camera);
+  const hit = raycaster.intersectObjects(meshes)[0];
+  if(hit){ tip.style.display='block'; tip.textContent = hit.object.userData.text;
+    tip.style.left = Math.min(e.clientX+16, innerWidth-340)+'px'; tip.style.top = (e.clientY+16)+'px'; }
+  else tip.style.display='none';
+});
+addEventListener('resize', () => { camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+
+function animate(){ requestAnimationFrame(animate); if(!dragging) group.rotation.y += 0.0012; renderer.render(scene, camera); }
+animate();
+</script>
+</body>
+</html>"""
+
+
+def generate_star_html():
+    """把全部记忆汇总，生成一个 3D 记忆星球的 HTML 文件并返回路径。"""
+    data = memory.collect_all_memories()
+    points = []
+    for p in data["profile"]:
+        points.append({"text": "%s：%s" % (p["k"], p["v"]), "layer": 0})
+    for l in data["long_term"]:
+        points.append({"text": l["text"], "layer": 1, "date": l.get("date", "")})
+    for f in data["facts"]:
+        points.append({"text": f["text"], "layer": 2, "date": f.get("date", "")})
+    for m in data["memories"]:
+        points.append({"text": m["text"][:160], "layer": 3})
+    if not points:
+        points.append({"text": "还没有记忆，去和回声聊两句吧", "layer": 2})
+    html = STAR_TEMPLATE.replace("__DATA__", json.dumps(points, ensure_ascii=False))
+    path = os.path.join(BASE_DIR, "memory_star.html")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(html)
+    return path
+
+
+def quick_memory(user, history):
+    """只兜底模型多轮后最不稳定的两种记忆意图；复杂句交给模型。
+    命中则返回 True，否则 False。"""
+    import re
+    u = user.strip()
+    done = None
+
+    m = re.match(r"^(?:我的长期目标是|长期目标是|我的目标是|目标是)(.+)$", u)
+    if m and len(m.group(1)) >= 2:
+        done = memory.add_long_term(m.group(1).strip("的了，。 "))
+    elif re.match(r"^(?:记住|帮我记|帮我记住|记一下)", u):
+        content = re.sub(r"^(?:记住|帮我记|帮我记住|记一下)", "", u).strip("：:，。 ")
+        if len(content) >= 2 and "岁" not in content and "我叫" not in content and "我是" not in content:
+            done = memory.add_fact(content)
+
+    if done:
+        print("回声> " + done)
+        history.append({"role": "assistant", "content": done})
+        return True
+    return False
 
 
 def _brief(s, limit=80):

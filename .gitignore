@@ -7,3 +7,7 @@ __pycache__/
 # 本地专属配置（含个人知识库路径等隐私）
 config.local.json
 
+# 记忆星球（含个人记忆数据）
+memory_star.html
+
+

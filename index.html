@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>溯游的个人主页</title>
+    <style>
+        :root {
+            /* 配色（浅色主题，克制） */
+            --bg: #ffffff;
+            --bg-subtle: #f7f7f8;        /* 卡片/分区底 */
+            --border: #e6e6e8;
+            --text: #1a1a1c;             /* 主文字 */
+            --text-muted: #6b6b72;       /* 次要文字 */
+            --accent: #4f46e5;           /* 主色（按钮/链接） */
+            --accent-soft: #eef0ff;      /* 主色的浅底 */
+            --danger: #d64545;
+
+            /* 字体层级 */
+            --font: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+            --fs-h1: 34px; --fs-h2: 24px; --fs-h3: 18px;
+            --fs-body: 15px; --fs-small: 13px;
+
+            /* 间距 */
+            --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px;
+            --sp-5: 24px; --sp-6: 32px; --sp-7: 48px;
+
+            /* 圆角 & 阴影（统一） */
+            --radius: 10px; --radius-lg: 16px;
+            --shadow: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+        }
+
+        body {
+            background-color: var(--bg);
+            font-family: var(--font);
+            margin: 0;
+            padding: 0;
+        }
+
+        .hero {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background-color: var(--accent-soft);
+        }
+
+        .hero-title {
+            font-size: var(--fs-h1);
+            color: var(--text);
+            margin-bottom: var(--sp-5);
+        }
+
+        .hero-subtitle {
+            font-size: var(--fs-h3);
+            color: var(--text-muted);
+        }
+
+        .hero-button {
+            background-color: var(--accent);
+            color: var(--text);
+            border: none;
+            border-radius: 8px;
+            padding: 10px 20px;
+            font-size: var(--fs-body);
+            text-decoration: none;
+            transition: background-color 0.1s ease-out;
+        }
+
+        .hero-button:hover {
+            background-color: darken(var(--accent), 8%);
+        }
+    </style>
+</head>
+<body>
+    <div class="hero">
+        <h1 class="hero-title">溯游</h1>
+        <p class="hero-subtitle">一个爱编程的初中生</p>
+        <a href="#" class="hero-button">了解更多</a>
+    </div>
+</body>
+</html>
