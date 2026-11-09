@@ -1,0 +1,9 @@
+# 运行数据和个人内容，不要提交
+data/
+workspace/
+__pycache__/
+*.pyc
+
+# 本地专属配置（含个人知识库路径等隐私）
+config.local.json
+
