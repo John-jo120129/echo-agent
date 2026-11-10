@@ -31,6 +31,7 @@
 - **电脑操控**：截屏、读屏幕文字（OCR）、读窗口控件（文字+坐标）、鼠标点击/移动/滚动、键盘输入——可视化/隐藏两种模式（`/stealth` 切换）
 - **网页自动化**：Playwright 驱动，打开网页、读内容、点击、填表、截图；隐藏模式=无头后台（真·隐藏），复用系统 Edge 免下载浏览器
 - **多模态看图**：`view_screen` 截屏发给 qwen2.5-vl 真正“看懂”屏幕画面（需 `ollama pull qwen2.5vl:7b`）
+- **视频理解**：`video_understand` 采样关键帧序列（非逐帧）理解视频内容、动作和动态变化
 - **多 Agent 协作**：每个任务走「规划→执行→反思」三阶段，像规划师+执行者+审阅员协作（`/multi` 切换）
 - **网页版界面**：`python webui.py` 起本地网页聊天窗口，SSE 流式实时看 agent 思考+干活，还能看记忆星球
 - **安全机制**：危险命令（删除/格式化/关机等）执行前必须你按 `y` 确认；`/auto` 可切换
@@ -45,6 +46,7 @@
 - [Ollama](https://ollama.com)（本地跑大模型用）
 - 电脑操控/网页自动化可选依赖：`pip install pyautogui uiautomation playwright`
 - 多模态看图可选：`ollama pull qwen2.5vl:7b`
+- 视频理解依赖：ffmpeg（自动发现，或配置 `ffmpeg_path`）+ `ollama create qwen2.5vl-16k -f Modelfile.vl`
 
 ### 三步启动
 
