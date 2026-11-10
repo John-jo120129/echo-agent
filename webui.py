@@ -52,6 +52,11 @@ header{height:60px;border-bottom:1px solid var(--border);display:flex;align-item
 .phase{align-self:center;font-size:12px;color:var(--accent);padding:3px 12px;border-radius:12px;background:var(--accent-soft)}
 .step{align-self:flex-start;font-size:12px;color:var(--muted);font-family:ui-monospace,Consolas,monospace;padding:4px 10px;background:#f0f0f2;border-radius:8px;max-width:90%}
 .plan{color:#185fa5}.review{color:#993c1d}
+.process{align-self:flex-start;font-size:12px;margin:2px 0}
+.process summary{cursor:pointer;user-select:none;color:var(--muted);padding:3px 10px;background:#f0f0f2;border-radius:8px;display:inline-block;list-style:none}
+.process summary::-webkit-details-marker{display:none}
+.process summary:hover{color:var(--accent)}
+.process .step{margin-top:6px}
 #input{flex:none;border-top:1px solid var(--border);padding:12px;display:flex;gap:10px;background:#fff}
 #input textarea{flex:1;height:52px;resize:none;border:1px solid var(--border);border-radius:12px;padding:12px;font-size:14px;font-family:inherit;outline:none}
 #input textarea:focus{border-color:var(--accent)}
@@ -120,18 +125,39 @@ async function ask(){
 }
 
 let curAgent = null;
+let procBox = null;
 function render(ev){
   const t = ev.type;
-  if(t === 'phase') add('phase', ev.text === '规划' ? '规划中…' : '反思中…');
-  else if(t === 'plan'){ const d = add('step plan', '计划：' + ev.text); }
-  else if(t === 'step') add('step', '[' + ev.step + '] ' + ev.tool + '(' + (ev.args||'').slice(0,80) + ')');
-  else if(t === 'review'){ const d = add('step review', '反思：' + ev.text); }
+  if(t === 'phase' || t === 'plan' || t === 'step' || t === 'review'){
+    // 过程信息折叠进一个可展开块，默认收起
+    if(!procBox){
+      const d = document.createElement('details');
+      d.className = 'process';
+      const s = document.createElement('summary');
+      s.textContent = '查看思考过程';
+      d.appendChild(s);
+      procBox = { details: d, body: document.createElement('div'), n: 0 };
+      d.appendChild(procBox.body);
+      msgs.appendChild(d);
+    }
+    const line = document.createElement('div');
+    line.className = 'step';
+    if(t === 'phase') line.textContent = '【' + ev.text + '】';
+    else if(t === 'plan'){ line.className = 'step plan'; line.textContent = '计划：' + ev.text; }
+    else if(t === 'step') line.textContent = '[' + ev.step + '] ' + ev.tool + (ev.args ? '(' + ev.args.slice(0,60) + ')' : '');
+    else if(t === 'review'){ line.className = 'step review'; line.textContent = '反思：' + ev.text; }
+    procBox.body.appendChild(line);
+    procBox.n++;
+    procBox.details.querySelector('summary').textContent = '查看思考过程（' + procBox.n + ' 步）';
+    msgs.scrollTop = msgs.scrollHeight;
+  }
   else if(t === 'token'){
     if(!curAgent) curAgent = add('msg agent', '');
     curAgent.textContent += ev.text;
     msgs.scrollTop = msgs.scrollHeight;
   }
   else if(t === 'reply'){
+    if(procBox){ procBox = null; }
     if(curAgent){ curAgent = null; }
     else add('msg agent', ev.text);
   }
