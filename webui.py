@@ -200,9 +200,12 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def _sse(self, event):
-        data = json.dumps(event, ensure_ascii=False)
-        self.wfile.write(("data: " + data + "\n\n").encode("utf-8"))
-        self.wfile.flush()
+        try:
+            data = json.dumps(event, ensure_ascii=False)
+            self.wfile.write(("data: " + data + "\n\n").encode("utf-8"))
+            self.wfile.flush()
+        except Exception:
+            pass   # 客户端断开时不崩
 
     def do_GET(self):
         if self.path in ("/", "/index.html"):
