@@ -15,5 +15,8 @@ build/
 dist/
 *.spec
 
+# 本地模型文件（OpenVINO 等，体积大不进 git）
+models/
+
 
 

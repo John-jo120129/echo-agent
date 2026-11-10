@@ -75,6 +75,7 @@ def run_agent(cfg, user_input, history, emit, max_steps=None):
     """执行一次完整任务，emit(event) 推送过程事件。返回最终回复文本。"""
     max_steps = max_steps or MAX_STEPS
     multi = cfg.get("multi_agent", True)
+    plan = ""
     content = _inject_knowledge(user_input)
     history.append({"role": "user", "content": content})
     messages = [{"role": "system", "content": build_system(cfg)}] + history[-30:]
@@ -84,7 +85,8 @@ def run_agent(cfg, user_input, history, emit, max_steps=None):
         emit({"type": "phase", "text": "规划"})
         try:
             pm = llm.call_llm(cfg, messages + [{"role": "user", "content":
-                "【规划】先别用工具，用一两句话说明你打算怎么完成这个任务。"}], tools=[])
+                "【规划】只输出你打算怎么做的思路（一句话，说清用什么工具/步骤），"
+                "不要直接给出答案或结果。"}], tools=[])
             plan = (pm.get("content") or "").strip()
             if plan:
                 emit({"type": "plan", "text": plan})
@@ -100,6 +102,11 @@ def run_agent(cfg, user_input, history, emit, max_steps=None):
         calls = msg.get("tool_calls")
         if not calls:
             reply = (msg.get("content") or "").strip()
+
+            # 兜底：主循环没内容时，用规划阶段的文本（模型可能把话都说在计划里了）
+            if not reply and plan:
+                reply = plan
+                emit({"type": "token", "text": reply})
 
             # 阶段3：反思（多 agent 时，只反思一次，避免死循环）
             if multi and reply and not reviewed:
