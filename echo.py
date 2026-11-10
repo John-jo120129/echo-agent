@@ -17,7 +17,7 @@ import json
 import os
 import sys
 
-from core import llm, memory, rag, skills, tools
+from core import computer, llm, memory, rag, skills, tools
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
@@ -33,7 +33,8 @@ def load_config():
         "api_key": "ollama",
         "model": "qwen2.5:7b",
         "kb_dirs": ["kb"],
-        "auto_confirm": False
+        "auto_confirm": False,
+        "stealth": False
     }
     cfg = dict(default)
     if os.path.exists(CONFIG_PATH):
@@ -113,6 +114,12 @@ def local_command(user, cfg):
         print("回声> 自动确认已 %s（危险命令%s问你）" % (
             "开启" if cfg["auto_confirm"] else "关闭",
             "不再" if cfg["auto_confirm"] else "会"))
+    elif cmd == "/stealth":
+        cfg["stealth"] = not cfg.get("stealth", False)
+        computer.ctx["stealth"] = cfg["stealth"]
+        print("回声> 操控模式已切到：%s（鼠标%s）" % (
+            "隐藏(静默瞬移)" if cfg["stealth"] else "可视化(平滑可见)",
+            "瞬移" if cfg["stealth"] else "平滑移动"))
     elif cmd == "/model":
         if arg:
             cfg["model"] = arg
@@ -181,6 +188,7 @@ def local_command(user, cfg):
 
 HELP_TEXT = """可用指令：
   /auto            切换危险命令自动确认（新手别开）
+  /stealth         切换操控模式：可视化（平滑可见）/ 隐藏（静默瞬移）
   /model 名字      换大脑模型（如 /model qwen2.5:14b）
   /reindex         重建知识库索引（含记忆归档，改动后用）
   /star            生成并打开 3D 记忆星球（可视化所有记忆）
@@ -189,15 +197,16 @@ HELP_TEXT = """可用指令：
   /time /remember /forgetall /todo /addtodo /done /reset /exit
 
 直接说任务就行，例如：
-  "帮我做一个好看的网页版个人主页"（会自动加载网页设计技能）
-  "记住我的名字是X、我喜欢Y"（会自动分档案/短期记忆）
-  "我之前是不是说过Z？"（会检索归档记忆，实现无限上下文）
-  "看看 kb 知识库里关于 X 的内容，总结给我" """
+  "读一下屏幕，看看现在有什么"
+  "帮我打开记事本，输入'你好'"
+  "记住我的名字是X、我喜欢Y"
+  "帮我做一个好看的网页版个人主页" """
 
 
 def chat(cfg):
     tools.ctx["auto"] = cfg.get("auto_confirm", False)
     tools.ctx["confirm_fn"] = confirm
+    computer.ctx["stealth"] = cfg.get("stealth", False)
     history = memory.load_history()
     print("=" * 50)
     print("  Echo 回声 · 本地自主 Agent")

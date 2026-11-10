@@ -21,6 +21,7 @@ import html as html_mod
 from core import memory
 from core import rag
 from core import skills
+from core import computer
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -310,6 +311,57 @@ TOOLS = [
                                       "text": {"type": "string", "description": "提醒内容"}},
                        "required": ["minutes", "text"]}
     }},
+    {"type": "function", "function": {
+        "name": "screenshot",
+        "description": "对当前屏幕截图并保存到文件。需要看清屏幕现状时用。",
+        "parameters": {"type": "object", "properties": {}}
+    }},
+    {"type": "function", "function": {
+        "name": "read_screen",
+        "description": "读取当前屏幕上能识别的所有文字（Windows 自带 OCR）。操控电脑前先用它了解屏幕上有哪些内容。",
+        "parameters": {"type": "object", "properties": {}}
+    }},
+    {"type": "function", "function": {
+        "name": "read_controls",
+        "description": "读当前窗口的控件（文字+坐标），可据此精准点击。对桌面软件很准，对网页/浏览器应用可能读不到。",
+        "parameters": {"type": "object", "properties": {}}
+    }},
+    {"type": "function", "function": {
+        "name": "mouse_move",
+        "description": "把鼠标移动到屏幕上的某个坐标。",
+        "parameters": {"type": "object",
+                       "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}},
+                       "required": ["x", "y"]}
+    }},
+    {"type": "function", "function": {
+        "name": "mouse_click",
+        "description": "点击鼠标。给 x/y 就点那个位置，不给就点当前位置。button 可选 left/right/middle。",
+        "parameters": {"type": "object",
+                       "properties": {"x": {"type": "integer"}, "y": {"type": "integer"},
+                                      "button": {"type": "string"}}}
+    }},
+    {"type": "function", "function": {
+        "name": "mouse_scroll",
+        "description": "滚动鼠标滚轮。amount 正数向上滚，负数向下滚。",
+        "parameters": {"type": "object",
+                       "properties": {"amount": {"type": "integer"}},
+                       "required": ["amount"]}
+    }},
+    {"type": "function", "function": {
+        "name": "type_text",
+        "description": "在当前位置输入文字（支持中文，中文走剪贴板粘贴）。enter 为 true 时输入后回车。",
+        "parameters": {"type": "object",
+                       "properties": {"text": {"type": "string", "description": "要输入的文字"},
+                                      "enter": {"type": "boolean", "description": "是否回车"}},
+                       "required": ["text"]}
+    }},
+    {"type": "function", "function": {
+        "name": "press_key",
+        "description": "按一个键，如 enter / tab / esc / f5 / 方向键等。",
+        "parameters": {"type": "object",
+                       "properties": {"key": {"type": "string", "description": "键名"}},
+                       "required": ["key"]}
+    }},
 ]
 
 _IMPL = {
@@ -332,6 +384,14 @@ _IMPL = {
     "write_diary": lambda a: memory.write_diary(a.get("title", ""), a.get("content", "")),
     "get_time": lambda a: memory.now_str(),
     "set_reminder": t_set_reminder,
+    "screenshot": lambda a: computer.screenshot(),
+    "read_screen": lambda a: computer.read_screen(),
+    "read_controls": lambda a: computer.read_controls(),
+    "mouse_move": lambda a: computer.mouse_move(a.get("x", 0), a.get("y", 0)),
+    "mouse_click": lambda a: computer.mouse_click(a.get("x"), a.get("y"), a.get("button", "left")),
+    "mouse_scroll": lambda a: computer.mouse_scroll(a.get("amount", 0)),
+    "type_text": lambda a: computer.type_text(a.get("text", ""), bool(a.get("enter", False))),
+    "press_key": lambda a: computer.press_key(a.get("key", "")),
 }
 
 
