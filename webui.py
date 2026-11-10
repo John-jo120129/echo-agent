@@ -104,13 +104,22 @@ async function ask(){
   send.disabled = false;
 }
 
+let curAgent = null;
 function render(ev){
   const t = ev.type;
   if(t === 'phase') add('phase', ev.text === '规划' ? '规划中…' : '反思中…');
   else if(t === 'plan'){ const d = add('step plan', '计划：' + ev.text); }
   else if(t === 'step') add('step', '[' + ev.step + '] ' + ev.tool + '(' + (ev.args||'').slice(0,80) + ')');
   else if(t === 'review'){ const d = add('step review', '反思：' + ev.text); }
-  else if(t === 'reply') add('msg agent', ev.text);
+  else if(t === 'token'){
+    if(!curAgent) curAgent = add('msg agent', '');
+    curAgent.textContent += ev.text;
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+  else if(t === 'reply'){
+    if(curAgent){ curAgent = null; }
+    else add('msg agent', ev.text);
+  }
 }
 
 send.onclick = ask;

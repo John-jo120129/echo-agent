@@ -89,7 +89,8 @@ def run_agent(cfg, user_input, history, emit, max_steps=None):
 
     # 阶段2：执行
     for step in range(1, max_steps + 1):
-        msg = llm.call_llm(cfg, messages, tools.TOOLS)
+        msg = llm.call_llm(cfg, messages, tools.TOOLS,
+                           on_token=lambda t: emit({"type": "token", "text": t}))
         calls = msg.get("tool_calls")
         if not calls:
             reply = (msg.get("content") or "").strip()

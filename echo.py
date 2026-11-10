@@ -16,6 +16,8 @@ Echo（回声）—— 一个真正能自己干活的本地 AI Agent
 import json
 import os
 import sys
+import datetime
+import threading
 
 from core import agent, browser, computer, llm, memory, rag, tools, voice
 
@@ -36,7 +38,8 @@ def load_config():
         "kb_dirs": ["kb"],
         "auto_confirm": False,
         "stealth": False,
-        "multi_agent": True
+        "multi_agent": True,
+        "speak_auto": False
     }
     cfg = dict(default)
     if os.path.exists(CONFIG_PATH):
@@ -88,6 +91,11 @@ def local_command(user, cfg):
         cfg["multi_agent"] = not cfg.get("multi_agent", True)
         print("回声> 多 Agent 协作已 %s（规划→执行→反思）" % (
             "开启" if cfg["multi_agent"] else "关闭"))
+    elif cmd == "/speak":
+        print("回声> " + voice.speak(arg) if arg else "回声> 用法：/speak 要读出来的话")
+    elif cmd == "/speak_auto":
+        cfg["speak_auto"] = not cfg.get("speak_auto", False)
+        print("回声> 回复自动朗读已 %s" % ("开启" if cfg["speak_auto"] else "关闭"))
     elif cmd == "/model":
         if arg:
             cfg["model"] = arg
@@ -117,6 +125,40 @@ def local_command(user, cfg):
                 print("    · (%s) %s" % (f["date"], f["text"]))
         if not p and not lt and not facts:
             print("回声> 还没有记忆，说'记住：xxx'即可")
+    elif cmd == "/log":
+        print("回声> 最近操作记录：\n" + tools.recent_actions(20))
+    elif cmd == "/organize":
+        facts = memory.load_facts()
+        if len(facts) < 3:
+            print("回声> 短期记忆还不够多，先攒一攒（说「记住：xxx」多记几条）")
+        else:
+            print("回声> 正在把短期记忆归纳成你的画像……")
+            msgs = [
+                {"role": "system", "content":
+                 "把下面这些零散的短期记忆，归纳成 3-5 句'关于这个用户'的画像（兴趣、习惯、目标、性格）。"
+                 "直接输出归纳结果，用短句、分号分隔，不要序号、不要多余解释。"},
+                {"role": "user", "content": "；".join(f["text"] for f in facts)}
+            ]
+            try:
+                m = llm.call_llm(cfg, msgs, tools=[])
+                summary = (m.get("content") or "").strip()
+                if summary:
+                    memory.set_profile("画像", summary)
+                    memory._save(memory.FACTS_PATH, facts[-3:])  # 留最近3条，其余已归纳
+                    print("回声> 已归纳进画像：\n" + summary)
+                else:
+                    print("回声> 归纳失败，稍后再试")
+            except Exception as e:
+                print("回声> 归纳出错：%s" % e)
+    elif cmd == "/schedule":
+        if arg:
+            parts = arg.split(None, 1)
+            if len(parts) == 2:
+                print("回声> " + memory.add_schedule(parts[0], parts[1]))
+            else:
+                print("回声> 用法：/schedule 08:00 任务内容")
+        else:
+            print("回声> " + memory.list_schedule())
     elif cmd == "/forgetall":
         memory._save(memory.FACTS_PATH, [])
         print("回声> 记忆已清空。")
@@ -155,14 +197,19 @@ def local_command(user, cfg):
 
 
 HELP_TEXT = """可用指令：
-  /auto            切换危险命令自动确认（新手别开）
-  /stealth         切换操控模式：可视化（平滑可见）/ 隐藏（静默瞬移）
-  /listen          说话：录音后自动转文字交给 echo（语音输入）
-  /model 名字      换大脑模型（如 /model qwen2.5:14b）
-  /reindex         重建知识库索引（含记忆归档，改动后用）
-  /star            生成并打开 3D 记忆星球（可视化所有记忆）
-  /profile         查看用户档案
-  /memory          查看全部记忆（档案/长期/短期）
+  /auto             切换危险命令自动确认（新手别开）
+  /stealth          切换操控模式：可视化 / 隐藏（静默瞬移+无头）
+  /listen           语音输入：说话，录音后自动转文字交给 echo
+  /speak 内容       语音输出：把内容读出来
+  /speak_auto       切换回复自动朗读
+  /multi            切换多 Agent 协作（规划→执行→反思）
+  /schedule 时 任务  定时任务，如 /schedule 08:00 汇报今日天气
+  /organize         把短期记忆归纳成你的画像
+  /log              查看最近操作记录（它干过什么）
+  /model 名字       换大脑模型（如 /model qwen2.5:14b）
+  /reindex          重建知识库索引
+  /star             生成并打开 3D 记忆星球
+  /profile /memory  查看档案 / 全部记忆
   /time /remember /forgetall /todo /addtodo /done /reset /exit
 
 直接说任务就行，例如：
@@ -172,12 +219,44 @@ HELP_TEXT = """可用指令：
   "帮我做一个好看的网页版个人主页" """
 
 
+def scheduler_loop(cfg):
+    """后台线程：每 30 秒检查一次，到点的定时任务自动执行（每天一次）。"""
+    import time
+    while True:
+        try:
+            now = datetime.datetime.now()
+            hm = now.strftime("%H:%M")
+            today = now.strftime("%Y-%m-%d")
+            items = memory.load_schedule()
+            changed = False
+            for s in items:
+                if s["time"] == hm and s.get("last_run") != today:
+                    print("\n[定时任务 %s] %s" % (hm, s["task"]))
+                    try:
+                        def emit(e):
+                            if e["type"] == "reply":
+                                print("  回声> " + e["text"])
+                        agent.run_agent(cfg, s["task"], [], emit)
+                    except Exception as e:
+                        print("  [定时任务出错] %s" % e)
+                    s["last_run"] = today
+                    changed = True
+            if changed:
+                memory.save_schedule(items)
+        except Exception:
+            pass
+        time.sleep(30)
+
+
 def chat(cfg):
     tools.ctx["auto"] = cfg.get("auto_confirm", False)
     tools.ctx["confirm_fn"] = confirm
     tools.ctx["cfg"] = cfg
     computer.ctx["stealth"] = cfg.get("stealth", False)
     history = memory.load_history()
+
+    # 启动定时任务后台线程
+    threading.Thread(target=scheduler_loop, args=(cfg,), daemon=True).start()
     print("=" * 50)
     print("  Echo 回声 · 本地自主 Agent")
     print("  说目标，我自己干；/help 求助；/exit 退出")
@@ -221,6 +300,7 @@ def chat(cfg):
             continue
 
         # ===== 多角色协作任务循环（核心逻辑在 core/agent.py）=====
+        streamed = [False]
         def emit(event):
             t = event["type"]
             if t == "phase":
@@ -231,8 +311,22 @@ def chat(cfg):
                 print("  [第%d步] %s(%s)" % (event["step"], event["tool"], _brief(event["args"])))
             elif t == "review":
                 print("  [反思] " + event["text"])
+            elif t == "token":
+                if not streamed[0]:
+                    print("\n回声> ", end="")
+                    streamed[0] = True
+                print(event["text"], end="", flush=True)
             elif t == "reply":
-                print("\n回声> " + event["text"])
+                if streamed[0]:
+                    print()   # 已流式显示，只补换行
+                else:
+                    print("\n回声> " + event["text"])
+                streamed[0] = False
+                if cfg.get("speak_auto"):
+                    try:
+                        voice.speak(event["text"])
+                    except Exception:
+                        pass
 
         try:
             agent.run_agent(cfg, user, history, emit)

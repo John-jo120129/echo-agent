@@ -27,6 +27,7 @@ HISTORY_PATH = os.path.join(DATA_DIR, "history.json")
 LONG_TERM_PATH = os.path.join(DATA_DIR, "long_term.json")
 PROFILE_PATH = os.path.join(DATA_DIR, "user_profile.json")
 MEMORIES_DIR = os.path.join(DATA_DIR, "memories")
+SCHEDULE_PATH = os.path.join(DATA_DIR, "schedule.json")
 
 # 会话内提醒（存内存，退出即消失）
 _reminders = []
@@ -226,3 +227,26 @@ def search_memory(query, top=8):
     if not hits:
         return "没找到相关记忆"
     return "\n".join("- [%s] %s" % (k, v) for k, v in hits[:top])
+
+
+# ---------- 定时任务 ----------
+def load_schedule():
+    return _load(SCHEDULE_PATH, [])
+
+
+def save_schedule(items):
+    _save(SCHEDULE_PATH, items)
+
+
+def add_schedule(time_str, task):
+    s = load_schedule()
+    s.append({"time": time_str, "task": task, "last_run": ""})
+    save_schedule(s)
+    return "已添加定时任务：每天 %s 执行「%s」" % (time_str, task)
+
+
+def list_schedule():
+    s = load_schedule()
+    if not s:
+        return "还没有定时任务。用法：/schedule 08:00 任务内容"
+    return "\n".join("- 每天 %s：%s" % (x["time"], x["task"]) for x in s)

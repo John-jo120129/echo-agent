@@ -57,3 +57,31 @@ def listen_and_transcribe(seconds=5):
     """一步到位：录音 + 转文字。"""
     audio = listen(seconds)
     return transcribe(audio)
+
+
+# ---------- 语音输出（说） ----------
+def speak(text, voice="zh-CN-XiaoxiaoNeural"):
+    """把文字用中文语音读出来（edge-tts，免费，中文自然）。"""
+    import asyncio
+    import tempfile
+    try:
+        import edge_tts
+    except ImportError:
+        return "还没装 edge-tts：pip install edge-tts"
+    if not text or not text.strip():
+        return "没有要读的内容"
+    path = os.path.join(tempfile.gettempdir(), "echo_speak.mp3")
+
+    async def _go():
+        communicate = edge_tts.Communicate(text[:500], voice)
+        await communicate.save(path)
+
+    try:
+        asyncio.run(_go())
+    except Exception as e:
+        return "语音生成失败：%s（edge-tts 需要联网）" % e
+    try:
+        os.startfile(path)   # 用系统默认播放器播
+        return "已朗读：%s" % text[:40]
+    except Exception as e:
+        return "语音已生成但播放失败：%s" % e

@@ -14,6 +14,9 @@ import os
 import re
 import ssl
 import subprocess
+import json
+import shutil
+import datetime
 import urllib.parse
 import urllib.request
 import html as html_mod
@@ -67,6 +70,16 @@ def t_write_file(args):
     if not safe and not ctx["auto"]:
         if not _ask_confirm("往项目/workspace 以外写文件：%s" % path):
             return "用户拒绝了，未写入"
+    # 自我进化保护：改自己的核心代码前自动备份，改坏了能恢复
+    if path.endswith(".py") and path.startswith(BASE_DIR) and os.path.exists(path):
+        try:
+            bak_dir = os.path.join(BASE_DIR, "data", "backup")
+            os.makedirs(bak_dir, exist_ok=True)
+            bak = os.path.join(bak_dir, datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                               + "_" + os.path.basename(path))
+            shutil.copy2(path, bak)
+        except Exception:
+            pass
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         f.write(args["content"])
@@ -458,11 +471,50 @@ _IMPL = {
 }
 
 
+LOG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "data", "action_log.json")
+
+
+def _log_action(name, args, result):
+    """把每次工具调用记进 data/action_log.json（安全兜底，可回看它干了啥）。"""
+    try:
+        logs = []
+        if os.path.exists(LOG_PATH):
+            with open(LOG_PATH, "r", encoding="utf-8") as f:
+                logs = json.load(f)
+        logs.append({"time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                     "tool": name, "args": str(args)[:200],
+                     "result": str(result)[:120]})
+        os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
+        with open(LOG_PATH, "w", encoding="utf-8") as f:
+            json.dump(logs[-500:], f, ensure_ascii=False, indent=1)
+    except Exception:
+        pass
+
+
+def recent_actions(n=20):
+    """返回最近 n 条操作记录。"""
+    try:
+        if not os.path.exists(LOG_PATH):
+            return "还没有操作记录"
+        with open(LOG_PATH, "r", encoding="utf-8") as f:
+            logs = json.load(f)
+        return "\n".join("[%s] %s(%s) → %s" % (l["time"], l["tool"],
+                                                l["args"][:60], l["result"][:60])
+                         for l in logs[-n:])
+    except Exception as e:
+        return "读日志失败：%s" % e
+
+
 def run_tool(name, args):
     try:
         fn = _IMPL.get(name)
         if not fn:
+            _log_action(name, args, "未知工具")
             return "未知工具：%s" % name
-        return fn(args)
+        result = fn(args)
+        _log_action(name, args, result)
+        return result
     except Exception as e:
+        _log_action(name, args, "出错：%s" % e)
         return "工具出错：%s" % e

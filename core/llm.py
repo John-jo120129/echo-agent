@@ -7,14 +7,15 @@ import urllib.request
 import urllib.error
 
 
-def call_llm(cfg, messages, tools):
-    """发消息给大脑，返回它的回复（可能带 tool_calls 表示它想动手）。"""
+def call_llm(cfg, messages, tools, on_token=None):
+    """发消息给大脑，返回它的回复（可能带 tool_calls 表示它想动手）。
+    传 on_token 回调则走流式：边生成边逐段回调（体验上不用干等）。"""
     url = cfg["api_base"].rstrip("/") + "/chat/completions"
     payload = {
         "model": cfg["model"],
         "messages": messages,
         "tools": tools,
-        "stream": False
+        "stream": bool(on_token)
     }
     req = urllib.request.Request(
         url,
@@ -25,6 +26,43 @@ def call_llm(cfg, messages, tools):
         },
         method="POST"
     )
+    if on_token:
+        # 流式：逐段读 SSE，拼 content 和 tool_calls
+        content = ""
+        tc_map = {}
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            for raw in resp:
+                line = raw.decode("utf-8", "replace").strip()
+                if not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if data == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data)
+                except Exception:
+                    continue
+                for choice in chunk.get("choices", []):
+                    delta = choice.get("delta", {})
+                    if delta.get("content"):
+                        content += delta["content"]
+                        on_token(delta["content"])
+                    for tc in delta.get("tool_calls") or []:
+                        i = tc.get("index", 0)
+                        e = tc_map.setdefault(i, {"id": "", "name": "", "args": ""})
+                        if tc.get("id"):
+                            e["id"] = tc["id"]
+                        fn = tc.get("function") or {}
+                        if fn.get("name"):
+                            e["name"] = fn["name"]
+                        if fn.get("arguments"):
+                            e["args"] += fn["arguments"]
+        tool_calls = [{"id": tc_map[i]["id"], "type": "function",
+                       "function": {"name": tc_map[i]["name"],
+                                    "arguments": tc_map[i]["args"]}}
+                      for i in sorted(tc_map)] or None
+        return {"content": content, "tool_calls": tool_calls}
+
     with urllib.request.urlopen(req, timeout=300) as resp:
         data = json.loads(resp.read().decode("utf-8"))
     return data["choices"][0]["message"]
