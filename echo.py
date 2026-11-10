@@ -17,7 +17,7 @@ import json
 import os
 import sys
 
-from core import browser, computer, llm, memory, rag, skills, tools
+from core import agent, browser, computer, llm, memory, rag, tools
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
@@ -35,7 +35,8 @@ def load_config():
         "vision_model": "qwen2.5vl:7b",
         "kb_dirs": ["kb"],
         "auto_confirm": False,
-        "stealth": False
+        "stealth": False,
+        "multi_agent": True
     }
     cfg = dict(default)
     if os.path.exists(CONFIG_PATH):
@@ -48,46 +49,6 @@ def load_config():
     for k, v in default.items():
         cfg.setdefault(k, v)
     return cfg
-
-
-def build_system(cfg):
-    """分层注入：人设 → 用户档案(最高) → 长期记忆 → 短期记忆 → 待办 → 技能摘要。"""
-    parts = []
-    if os.path.exists(PERSONA_PATH):
-        with open(PERSONA_PATH, "r", encoding="utf-8") as f:
-            parts.append(f.read())
-    parts.append("当前时间：%s" % memory.now_str())
-
-    # 用户档案（最高优先级，稳定的身份信息）
-    profile = memory.load_profile()
-    if profile:
-        parts.append("【用户档案】" + "；".join("%s=%s" % (k, v) for k, v in profile.items()))
-
-    # 长期记忆
-    long_term = memory.load_long_term()
-    if long_term:
-        parts.append("【长期记忆】" + "；".join(
-            "(%s)%s" % (l["date"], l["text"]) for l in long_term[-20:]))
-
-    # 短期事实记忆
-    facts = memory.load_facts()
-    if facts:
-        parts.append("【短期记忆】" + "；".join(f["text"] for f in facts[-20:]))
-
-    # 待办
-    todos = [t for t in memory.load_todos() if not t["done"]]
-    if todos:
-        parts.append("用户未完成的待办：" +
-                     "；".join("[%d]%s" % (t["id"], t["task"]) for t in todos))
-
-    # 技能摘要
-    sk = skills.list_skills()
-    if sk:
-        parts.append("【可用技能】做专业任务前先 list_skills 或 use_skill 加载规范：\n" +
-                     "\n".join("- %s：%s（%s）" % (s["name"], s["description"], s["when"])
-                               for s in sk))
-
-    return "\n\n".join(parts)
 
 
 def confirm(prompt):
@@ -123,6 +84,10 @@ def local_command(user, cfg):
             "隐藏" if cfg["stealth"] else "可视化",
             "瞬移" if cfg["stealth"] else "平滑移动",
             "无头后台" if cfg["stealth"] else "有头可见"))
+    elif cmd == "/multi":
+        cfg["multi_agent"] = not cfg.get("multi_agent", True)
+        print("回声> 多 Agent 协作已 %s（规划→执行→反思）" % (
+            "开启" if cfg["multi_agent"] else "关闭"))
     elif cmd == "/model":
         if arg:
             cfg["model"] = arg
@@ -243,40 +208,22 @@ def chat(cfg):
         if quick_memory(user, history):
             continue
 
-        # ===== 自主任务循环（agent 的心脏）=====
-        content = user
-        if any(w in user for w in ("知识库", "记忆", "说过", "之前", "还记得")):
-            kb_hit = rag.search(user)   # 检索知识库 + 归档记忆，实现无限上下文
-            if not kb_hit.startswith(("知识库", "检索失败")):
-                content = user + "\n\n[检索到的相关资料（回答必须基于此内容，找不到就说没有）]\n" + kb_hit
-        history.append({"role": "user", "content": content})
-        messages = [{"role": "system", "content": build_system(cfg)}] + history[-30:]
+        # ===== 多角色协作任务循环（核心逻辑在 core/agent.py）=====
+        def emit(event):
+            t = event["type"]
+            if t == "phase":
+                print("\n  【%s】" % event["text"], end=" ")
+            elif t == "plan":
+                print(event["text"])
+            elif t == "step":
+                print("  [第%d步] %s(%s)" % (event["step"], event["tool"], _brief(event["args"])))
+            elif t == "review":
+                print("  [反思] " + event["text"])
+            elif t == "reply":
+                print("\n回声> " + event["text"])
+
         try:
-            for step in range(1, MAX_STEPS + 1):
-                msg = llm.call_llm(cfg, messages, tools.TOOLS)
-                calls = msg.get("tool_calls")
-                if not calls:
-                    reply = (msg.get("content") or "……").strip()
-                    print("\n回声> " + reply)
-                    history.append({"role": "assistant", "content": reply})
-                    break
-                messages.append(msg)
-                for tc in calls:
-                    fn = tc["function"]
-                    argstr = fn.get("arguments") or "{}"
-                    try:
-                        args = json.loads(argstr)
-                    except Exception:
-                        args = {}
-                    print("  [第%d步] %s(%s)" % (step, fn["name"],
-                                                 _brief(argstr)))
-                    result = tools.run_tool(fn["name"], args)
-                    messages.append({"role": "tool",
-                                     "tool_call_id": tc.get("id", ""),
-                                     "content": str(result)})
-            else:
-                print("\n回声> 走满了 %d 步还没收工，先停下来汇报。"
-                      "可以说'继续'让我接着干。" % MAX_STEPS)
+            agent.run_agent(cfg, user, history, emit)
         except Exception as e:
             print("回声> 出错了：%s" % e)
             print("       若是连不上大脑：确认 Ollama 在跑（ollama serve），"

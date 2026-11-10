@@ -1,0 +1,132 @@
+# -*- coding: utf-8 -*-
+"""core/agent.py —— Agent 核心循环（多角色协作）
+
+一个任务进来，分三个阶段，像一个小团队协作：
+  1. 规划（规划师 Planner）—— 先想清楚怎么做，输出简短计划
+  2. 执行（执行者 Executor）—— 按计划调用工具干活，最多 N 步自我纠错
+  3. 反思（审阅员 Reviewer）—— 检查结果是否达成目标，没达成就继续
+
+命令行（echo.py）和网页版（webui.py）都调用 run_agent，只是 emit 方式不同。
+"""
+import json
+import os
+
+from core import llm, memory, rag, skills, tools
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PERSONA_PATH = os.path.join(BASE_DIR, "persona.md")
+MAX_STEPS = 20
+
+
+def build_system(cfg):
+    """分层注入：人设 → 用户档案 → 长期记忆 → 短期记忆 → 待办 → 技能摘要。"""
+    parts = []
+    if os.path.exists(PERSONA_PATH):
+        with open(PERSONA_PATH, "r", encoding="utf-8") as f:
+            parts.append(f.read())
+    parts.append("当前时间：%s" % memory.now_str())
+
+    profile = memory.load_profile()
+    if profile:
+        parts.append("【用户档案】" + "；".join("%s=%s" % (k, v) for k, v in profile.items()))
+
+    long_term = memory.load_long_term()
+    if long_term:
+        parts.append("【长期记忆】" + "；".join(
+            "(%s)%s" % (l["date"], l["text"]) for l in long_term[-20:]))
+
+    facts = memory.load_facts()
+    if facts:
+        parts.append("【短期记忆】" + "；".join(f["text"] for f in facts[-20:]))
+
+    todos = [t for t in memory.load_todos() if not t["done"]]
+    if todos:
+        parts.append("用户未完成的待办：" +
+                     "；".join("[%d]%s" % (t["id"], t["task"]) for t in todos))
+
+    sk = skills.list_skills()
+    if sk:
+        parts.append("【可用技能】做专业任务前先 list_skills 或 use_skill 加载规范：\n" +
+                     "\n".join("- %s：%s（%s）" % (s["name"], s["description"], s["when"])
+                               for s in sk))
+
+    return "\n\n".join(parts)
+
+
+def _inject_knowledge(user):
+    """用户提到知识库/记忆/之前 时，自动检索相关资料注入。"""
+    if not any(w in user for w in ("知识库", "记忆", "说过", "之前", "还记得")):
+        return user
+    try:
+        hit = rag.search(user)
+        if hit and not hit.startswith(("知识库", "检索失败")):
+            return user + "\n\n[检索到的相关资料（回答必须基于此内容，找不到就说没有）]\n" + hit
+    except Exception:
+        pass
+    return user
+
+
+def run_agent(cfg, user_input, history, emit, max_steps=None):
+    """执行一次完整任务，emit(event) 推送过程事件。返回最终回复文本。"""
+    max_steps = max_steps or MAX_STEPS
+    multi = cfg.get("multi_agent", True)
+    content = _inject_knowledge(user_input)
+    history.append({"role": "user", "content": content})
+    messages = [{"role": "system", "content": build_system(cfg)}] + history[-30:]
+
+    # 阶段1：规划
+    if multi:
+        emit({"type": "phase", "text": "规划"})
+        try:
+            pm = llm.call_llm(cfg, messages + [{"role": "user", "content":
+                "【规划】先别用工具，用一两句话说明你打算怎么完成这个任务。"}], tools=[])
+            plan = (pm.get("content") or "").strip()
+            if plan:
+                emit({"type": "plan", "text": plan})
+                messages.append({"role": "assistant", "content": "计划：" + plan})
+        except Exception:
+            pass
+
+    # 阶段2：执行
+    for step in range(1, max_steps + 1):
+        msg = llm.call_llm(cfg, messages, tools.TOOLS)
+        calls = msg.get("tool_calls")
+        if not calls:
+            reply = (msg.get("content") or "").strip()
+
+            # 阶段3：反思（多 agent 时）
+            if multi and reply:
+                emit({"type": "phase", "text": "反思"})
+                try:
+                    rm = llm.call_llm(cfg, messages + [
+                        {"role": "assistant", "content": reply},
+                        {"role": "user", "content":
+                         "【反思】上面的结果是否完整达成了用户最初的目标？"
+                         "没达成就回「继续：还差什么」，达成了就回「完成」。"}], tools=[])
+                    review = (rm.get("content") or "").strip()
+                    emit({"type": "review", "text": review})
+                    if "继续" in review and step < max_steps:
+                        messages.append({"role": "user", "content": "还没完成，请继续：" + review})
+                        continue
+                except Exception:
+                    pass
+
+            emit({"type": "reply", "text": reply or "……"})
+            history.append({"role": "assistant", "content": reply})
+            return reply
+
+        messages.append(msg)
+        for tc in calls:
+            fn = tc["function"]
+            argstr = fn.get("arguments") or "{}"
+            try:
+                args = json.loads(argstr)
+            except Exception:
+                args = {}
+            emit({"type": "step", "step": step, "tool": fn["name"], "args": argstr})
+            result = tools.run_tool(fn["name"], args)
+            messages.append({"role": "tool", "tool_call_id": tc.get("id", ""),
+                             "content": str(result)})
+
+    emit({"type": "reply", "text": "走了 %d 步还没完成，先停下汇报，可以说「继续」。" % max_steps})
+    return ""

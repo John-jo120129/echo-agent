@@ -245,6 +245,13 @@ TOOLS = [
                        "required": ["query"]}
     }},
     {"type": "function", "function": {
+        "name": "search_memory",
+        "description": "检索用户说过/记过的记忆（短期、长期、会话归档）。用户问'我之前说过X'或需要回忆时用它。",
+        "parameters": {"type": "object",
+                       "properties": {"query": {"type": "string", "description": "要回忆的关键词或问题"}},
+                       "required": ["query"]}
+    }},
+    {"type": "function", "function": {
         "name": "web_search",
         "description": "联网搜索全网公开知识（必应）。本地知识库 search_kb 查不到、或需要公开/最新信息时用它。返回标题+链接+摘要。",
         "parameters": {"type": "object",
@@ -411,6 +418,7 @@ _IMPL = {
     "search_files": t_search_files,
     "web_fetch": t_web_fetch,
     "search_kb": t_search_kb,
+    "search_memory": lambda a: memory.search_memory(a.get("query", "")),
     "web_search": t_web_search,
     "remember": lambda a: memory.add_fact(a.get("content", "")),
     "remember_long": lambda a: memory.add_long_term(a.get("content", "")),

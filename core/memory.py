@@ -49,6 +49,14 @@ def _save(path, data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
+def _similar(a, b):
+    """简单字符集合重叠度，用于记忆去重。返回 0~1。"""
+    sa, sb = set(a), set(b)
+    if not sa or not sb:
+        return 0.0
+    return len(sa & sb) / max(len(sa), len(sb))
+
+
 def today_str():
     return datetime.date.today().strftime("%Y-%m-%d")
 
@@ -63,6 +71,9 @@ def load_facts():
 
 def add_fact(text):
     facts = load_facts()
+    for f in facts:
+        if _similar(text, f["text"]) > 0.72 or f["text"] in text or text in f["text"]:
+            return "这条已经记过了：%s" % f["text"]
     facts.append({"date": today_str(), "text": text})
     _save(FACTS_PATH, facts)
     return "已记住，现有 %d 条记忆" % len(facts)
@@ -152,6 +163,9 @@ def load_long_term():
 
 def add_long_term(text, kind="memory"):
     items = load_long_term()
+    for it in items:
+        if _similar(text, it["text"]) > 0.72 or it["text"] in text or text in it["text"]:
+            return "这条长期记忆已经存在：%s" % it["text"]
     items.append({"date": today_str(), "kind": kind, "text": text})
     _save(LONG_TERM_PATH, items)
     return "已存入长期记忆（共 %d 条）" % len(items)
@@ -182,3 +196,33 @@ def collect_all_memories():
                 with open(os.path.join(MEMORIES_DIR, fn), "r", encoding="utf-8") as f:
                     result["memories"].append({"file": fn, "text": f.read()[:600]})
     return result
+
+
+def search_memory(query, top=8):
+    """检索全部记忆（短期+长期+归档），返回相关的记忆条目。"""
+    def match(text):
+        return _similar(query, text) > 0.22 or any(w in text for w in query if len(w) >= 2)
+
+    hits = []
+    for f in load_facts():
+        if match(f["text"]):
+            hits.append(("短期", f["text"]))
+    for l in load_long_term():
+        if match(l["text"]):
+            hits.append(("长期", l["text"]))
+    if os.path.isdir(MEMORIES_DIR):
+        for fn in sorted(os.listdir(MEMORIES_DIR)):
+            if not fn.endswith(".md"):
+                continue
+            try:
+                with open(os.path.join(MEMORIES_DIR, fn), "r", encoding="utf-8") as f:
+                    content = f.read()
+            except Exception:
+                continue
+            for line in content.splitlines():
+                line = line.strip().lstrip("#-·* ")
+                if line and match(line):
+                    hits.append(("归档(%s)" % fn[:10], line))
+    if not hits:
+        return "没找到相关记忆"
+    return "\n".join("- [%s] %s" % (k, v) for k, v in hits[:top])
