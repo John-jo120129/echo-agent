@@ -17,7 +17,7 @@ import json
 import os
 import sys
 
-from core import agent, browser, computer, llm, memory, rag, tools
+from core import agent, browser, computer, llm, memory, rag, tools, voice
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
@@ -157,6 +157,7 @@ def local_command(user, cfg):
 HELP_TEXT = """可用指令：
   /auto            切换危险命令自动确认（新手别开）
   /stealth         切换操控模式：可视化（平滑可见）/ 隐藏（静默瞬移）
+  /listen          说话：录音后自动转文字交给 echo（语音输入）
   /model 名字      换大脑模型（如 /model qwen2.5:14b）
   /reindex         重建知识库索引（含记忆归档，改动后用）
   /star            生成并打开 3D 记忆星球（可视化所有记忆）
@@ -195,6 +196,17 @@ def chat(cfg):
             break
         if not user:
             continue
+
+        # /listen：录音 → 转文字 → 把听到的话当输入继续
+        if user.startswith("/listen"):
+            try:
+                print("回声> 我在听，请说话……")
+                heard = voice.listen_and_transcribe()
+                print("回声> 我听到：「%s」" % heard)
+                user = heard
+            except Exception as e:
+                print("回声> 录音/识别失败：%s" % e)
+                continue
 
         result = local_command(user, cfg)
         if result == "EXIT":
