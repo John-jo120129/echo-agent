@@ -363,10 +363,16 @@ TOOLS = [
     }},
     {"type": "function", "function": {
         "name": "mouse_click",
-        "description": "点击鼠标。给 x/y 就点那个位置，不给就点当前位置。button 可选 left/right/middle。",
+        "description": "单击鼠标。给 x/y 就点那个位置，不给就点当前位置。button 可选 left/right/middle。要双击请用 mouse_double。",
         "parameters": {"type": "object",
                        "properties": {"x": {"type": "integer"}, "y": {"type": "integer"},
                                       "button": {"type": "string"}}}
+    }},
+    {"type": "function", "function": {
+        "name": "mouse_double",
+        "description": "双击鼠标。用来打开桌面图标、文件、文件夹、程序。给 x/y 就在那个位置双击，不给就在当前位置双击。",
+        "parameters": {"type": "object",
+                       "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}}}
     }},
     {"type": "function", "function": {
         "name": "mouse_scroll",
@@ -459,6 +465,7 @@ _IMPL = {
     "view_screen": lambda a: computer.view_screen(ctx.get("cfg", {}), a.get("prompt")),
     "mouse_move": lambda a: computer.mouse_move(a.get("x", 0), a.get("y", 0)),
     "mouse_click": lambda a: computer.mouse_click(a.get("x"), a.get("y"), a.get("button", "left")),
+    "mouse_double": lambda a: computer.mouse_double(a.get("x"), a.get("y")),
     "mouse_scroll": lambda a: computer.mouse_scroll(a.get("amount", 0)),
     "type_text": lambda a: computer.type_text(a.get("text", ""), bool(a.get("enter", False))),
     "press_key": lambda a: computer.press_key(a.get("key", "")),

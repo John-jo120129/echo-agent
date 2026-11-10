@@ -10,6 +10,7 @@
 """
 import json
 import os
+import re
 
 from core import llm, memory, rag, skills, tools
 
@@ -98,12 +99,40 @@ def run_agent(cfg, user_input, history, emit, max_steps=None):
 
     # 阶段2：执行
     reviewed = False
+    call_history = []
     for step in range(1, max_steps + 1):
         msg = llm.call_llm(cfg, messages, tools.TOOLS,
                            on_token=lambda t: emit({"type": "token", "text": t}))
         calls = msg.get("tool_calls")
         if not calls:
             reply = (msg.get("content") or "").strip()
+
+            # 兜底：有些小模型（如 7b）不会用标准 tool_calls，会把工具调用写成 JSON 文本
+            # 形如 {"name": "read_screen", "arguments": {}} —— 替它解析并执行
+            m = re.search(r'\{\s*"name"\s*:\s*"(\w+)"\s*,\s*"arguments"\s*:\s*(\{.*?\})\s*\}',
+                          reply, re.S)
+            if m:
+                tool_name, raw_args = m.group(1), m.group(2)
+                try:
+                    targs = json.loads(raw_args)
+                except Exception:
+                    targs = {}
+                if tool_name in tools._IMPL:
+                    key = tool_name + "|" + raw_args
+                    # 熔断：同一个工具同参数连续重复，说明模型卡住了，别再空转
+                    if call_history.count(key) >= 2:
+                        msg_txt = "（%s 反复执行同样的操作、结果没变化，我先停下。）" % tool_name
+                        emit({"type": "reply", "text": msg_txt})
+                        history.append({"role": "assistant", "content": msg_txt})
+                        return msg_txt
+                    call_history.append(key)
+                    emit({"type": "step", "step": step, "tool": tool_name,
+                          "args": raw_args[:80]})
+                    result = tools.run_tool(tool_name, targs)
+                    messages.append({"role": "assistant", "content": reply})
+                    messages.append({"role": "user",
+                                     "content": "工具 %s 执行结果：%s" % (tool_name, result)})
+                    continue
 
             # 兜底：主循环没内容时，用规划阶段的文本（模型可能把话都说在计划里了）
             if not reply and plan:

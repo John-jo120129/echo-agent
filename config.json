@@ -1,7 +1,9 @@
 {
   "api_base": "http://localhost:11434/v1",
   "api_key": "ollama",
-  "model": "qwen2.5:7b",
-  "kb_dirs": ["kb"],
+  "model": "qwen2.5:14b",
+  "kb_dirs": [
+    "kb"
+  ],
   "auto_confirm": false
 }
