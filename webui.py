@@ -7,6 +7,7 @@
 import json
 import os
 import sys
+import socket
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -15,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from core import agent, browser, computer, memory, tools, voice
 from echo import load_config, generate_star_html
 
-HOST, PORT = "127.0.0.1", 8899
+HOST, PORT = "0.0.0.0", 8899   # 0.0.0.0 = 局域网也能访问（手机同 WiFi 可连）
 
 cfg = load_config()
 tools.ctx["cfg"] = cfg
@@ -59,6 +60,7 @@ header{height:60px;border-bottom:1px solid var(--border);display:flex;align-item
 #input button:disabled{opacity:.5;cursor:default}
 #mic{width:52px;background:#fff;color:#1a1a1c;border:1px solid var(--border)}
 #mic:hover{background:var(--bg);border-color:var(--accent)}
+@media(max-width:600px){.star{font-size:11px;padding:4px 8px}.brand .sub{display:none}#input button{width:64px}.msg{max-width:90%}}
 </style>
 </head>
 <body>
@@ -246,14 +248,27 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
 
 
+def _lan_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
+
 def main():
     server = ThreadingHTTPServer((HOST, PORT), Handler)
-    print("=" * 46)
+    lan = _lan_ip()
+    print("=" * 48)
     print("  回声 Echo 网页版已启动")
-    print("  浏览器打开：http://%s:%d" % (HOST, PORT))
-    print("  记忆星球：  http://%s:%d/star" % (HOST, PORT))
+    print("  本机打开：   http://127.0.0.1:%d" % PORT)
+    print("  手机/局域网：http://%s:%d  （同一 WiFi）" % (lan, PORT))
+    print("  记忆星球：   http://127.0.0.1:%d/star" % PORT)
     print("  按 Ctrl+C 退出")
-    print("=" * 46)
+    print("=" * 48)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
