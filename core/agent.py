@@ -91,6 +91,8 @@ def run_agent(cfg, user_input, history, emit, max_steps=None):
             if plan:
                 emit({"type": "plan", "text": plan})
                 messages.append({"role": "assistant", "content": "计划：" + plan})
+                messages.append({"role": "user", "content":
+                    "按上面的计划立刻开始执行，直接调用工具行动，不要问用户确认，也不要停在'我打算…'就结束。"})
         except Exception:
             pass
 
