@@ -17,7 +17,7 @@ import json
 import os
 import sys
 
-from core import computer, llm, memory, rag, skills, tools
+from core import browser, computer, llm, memory, rag, skills, tools
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
@@ -32,6 +32,7 @@ def load_config():
         "api_base": "http://localhost:11434/v1",
         "api_key": "ollama",
         "model": "qwen2.5:7b",
+        "vision_model": "qwen2.5vl:7b",
         "kb_dirs": ["kb"],
         "auto_confirm": False,
         "stealth": False
@@ -117,9 +118,11 @@ def local_command(user, cfg):
     elif cmd == "/stealth":
         cfg["stealth"] = not cfg.get("stealth", False)
         computer.ctx["stealth"] = cfg["stealth"]
-        print("回声> 操控模式已切到：%s（鼠标%s）" % (
-            "隐藏(静默瞬移)" if cfg["stealth"] else "可视化(平滑可见)",
-            "瞬移" if cfg["stealth"] else "平滑移动"))
+        browser.ctx["stealth"] = cfg["stealth"]
+        print("回声> 操控模式已切到：%s（鼠标%s，浏览器%s）" % (
+            "隐藏" if cfg["stealth"] else "可视化",
+            "瞬移" if cfg["stealth"] else "平滑移动",
+            "无头后台" if cfg["stealth"] else "有头可见"))
     elif cmd == "/model":
         if arg:
             cfg["model"] = arg
@@ -206,6 +209,7 @@ HELP_TEXT = """可用指令：
 def chat(cfg):
     tools.ctx["auto"] = cfg.get("auto_confirm", False)
     tools.ctx["confirm_fn"] = confirm
+    tools.ctx["cfg"] = cfg
     computer.ctx["stealth"] = cfg.get("stealth", False)
     history = memory.load_history()
     print("=" * 50)

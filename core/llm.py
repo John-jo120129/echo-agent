@@ -30,6 +30,34 @@ def call_llm(cfg, messages, tools):
     return data["choices"][0]["message"]
 
 
+def call_vision(cfg, prompt, image_paths):
+    """把图片发给多模态模型看图理解。用 cfg 里的 vision_model。"""
+    import base64
+    images = []
+    for p in image_paths:
+        with open(p, "rb") as f:
+            images.append(base64.b64encode(f.read()).decode("ascii"))
+    model = cfg.get("vision_model", "qwen2.5vl:7b")
+    url = cfg["api_base"].rstrip("/") + "/chat/completions"
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt, "images": images}],
+        "stream": False
+    }
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + cfg.get("api_key", "")
+        },
+        method="POST"
+    )
+    with urllib.request.urlopen(req, timeout=300) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    return data["choices"][0]["message"].get("content", "")
+
+
 def embed(texts, model="mxbai-embed-large"):
     """把文字变成向量（用于知识库检索）。跑在本机 Ollama 上。
     分批调用 + 重试，模型冷加载慢也不怕。"""

@@ -165,6 +165,21 @@ def read_controls(max_items=40):
         return "读控件失败：%s" % e
 
 
+def view_screen(cfg, prompt=None):
+    """截屏并发给多模态模型'看图'理解画面。返回它对屏幕内容的描述。
+    需要 cfg（含 vision_model）。模型没下载好时会给出友好提示。"""
+    from core import llm
+    prompt = prompt or ("请描述这个屏幕画面：上面有哪些窗口、按钮、图标、文字，"
+                        "各自大致在什么位置。重点说清如果要操作应该点哪里。")
+    os.makedirs(os.path.dirname(SCREEN_TMP), exist_ok=True)
+    pyautogui.screenshot().save(SCREEN_TMP)
+    try:
+        return llm.call_vision(cfg, prompt, [SCREEN_TMP])
+    except Exception as e:
+        return ("看图失败：%s。\n提示：确认多模态模型已下载（ollama pull %s）"
+                % (e, cfg.get("vision_model", "qwen2.5vl:7b")))
+
+
 def _b64(s):
     import base64
     return base64.b64encode(s.encode("utf-8")).decode("ascii")

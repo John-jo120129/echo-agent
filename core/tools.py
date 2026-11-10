@@ -22,6 +22,7 @@ from core import memory
 from core import rag
 from core import skills
 from core import computer
+from core import browser
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -327,6 +328,12 @@ TOOLS = [
         "parameters": {"type": "object", "properties": {}}
     }},
     {"type": "function", "function": {
+        "name": "view_screen",
+        "description": "截屏并发给多模态模型真正'看懂'屏幕画面（文字、图标、窗口、布局）。需要判断屏幕上有什么、长什么样时用它。",
+        "parameters": {"type": "object",
+                       "properties": {"prompt": {"type": "string", "description": "想让模型重点看什么（可选）"}}}
+    }},
+    {"type": "function", "function": {
         "name": "mouse_move",
         "description": "把鼠标移动到屏幕上的某个坐标。",
         "parameters": {"type": "object",
@@ -362,6 +369,38 @@ TOOLS = [
                        "properties": {"key": {"type": "string", "description": "键名"}},
                        "required": ["key"]}
     }},
+    {"type": "function", "function": {
+        "name": "browser_open",
+        "description": "打开一个网页。之后的浏览器操作都针对这个页面。",
+        "parameters": {"type": "object",
+                       "properties": {"url": {"type": "string", "description": "网址"}},
+                       "required": ["url"]}
+    }},
+    {"type": "function", "function": {
+        "name": "browser_read",
+        "description": "读取当前浏览器页面的文字内容。",
+        "parameters": {"type": "object", "properties": {}}
+    }},
+    {"type": "function", "function": {
+        "name": "browser_click",
+        "description": "点击网页上的元素。target 可以是可见文字（如'登录'）或 CSS 选择器（如'#submit'）。",
+        "parameters": {"type": "object",
+                       "properties": {"target": {"type": "string", "description": "要点的文字或选择器"}},
+                       "required": ["target"]}
+    }},
+    {"type": "function", "function": {
+        "name": "browser_type",
+        "description": "在网页输入框里填文字。selector 是输入框的 CSS 选择器。",
+        "parameters": {"type": "object",
+                       "properties": {"selector": {"type": "string", "description": "输入框选择器，如 input[name=q]"},
+                                      "text": {"type": "string", "description": "要填的内容"}},
+                       "required": ["selector", "text"]}
+    }},
+    {"type": "function", "function": {
+        "name": "browser_screenshot",
+        "description": "截当前浏览器页面。",
+        "parameters": {"type": "object", "properties": {}}
+    }},
 ]
 
 _IMPL = {
@@ -387,11 +426,17 @@ _IMPL = {
     "screenshot": lambda a: computer.screenshot(),
     "read_screen": lambda a: computer.read_screen(),
     "read_controls": lambda a: computer.read_controls(),
+    "view_screen": lambda a: computer.view_screen(ctx.get("cfg", {}), a.get("prompt")),
     "mouse_move": lambda a: computer.mouse_move(a.get("x", 0), a.get("y", 0)),
     "mouse_click": lambda a: computer.mouse_click(a.get("x"), a.get("y"), a.get("button", "left")),
     "mouse_scroll": lambda a: computer.mouse_scroll(a.get("amount", 0)),
     "type_text": lambda a: computer.type_text(a.get("text", ""), bool(a.get("enter", False))),
     "press_key": lambda a: computer.press_key(a.get("key", "")),
+    "browser_open": lambda a: browser.browser_open(a.get("url", "")),
+    "browser_read": lambda a: browser.browser_read(),
+    "browser_click": lambda a: browser.browser_click(a.get("target", "")),
+    "browser_type": lambda a: browser.browser_type(a.get("selector", ""), a.get("text", "")),
+    "browser_screenshot": lambda a: browser.browser_screenshot(),
 }
 
 
