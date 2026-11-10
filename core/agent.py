@@ -25,6 +25,11 @@ def build_system(cfg):
         with open(PERSONA_PATH, "r", encoding="utf-8") as f:
             parts.append(f.read())
     parts.append("当前时间：%s" % memory.now_str())
+    home = os.path.expanduser("~")
+    parts.append("当前用户目录：%s（桌面=%s，下载=%s，文档=%s）。"
+                 "用户说'桌面/下载/文档'时直接用这些路径，别反复问路径，先列目录看结果。"
+                 % (home, os.path.join(home, "Desktop"),
+                    os.path.join(home, "Downloads"), os.path.join(home, "Documents")))
 
     profile = memory.load_profile()
     if profile:
@@ -88,6 +93,7 @@ def run_agent(cfg, user_input, history, emit, max_steps=None):
             pass
 
     # 阶段2：执行
+    reviewed = False
     for step in range(1, max_steps + 1):
         msg = llm.call_llm(cfg, messages, tools.TOOLS,
                            on_token=lambda t: emit({"type": "token", "text": t}))
@@ -95,18 +101,19 @@ def run_agent(cfg, user_input, history, emit, max_steps=None):
         if not calls:
             reply = (msg.get("content") or "").strip()
 
-            # 阶段3：反思（多 agent 时）
-            if multi and reply:
+            # 阶段3：反思（多 agent 时，只反思一次，避免死循环）
+            if multi and reply and not reviewed:
+                reviewed = True
                 emit({"type": "phase", "text": "反思"})
                 try:
                     rm = llm.call_llm(cfg, messages + [
                         {"role": "assistant", "content": reply},
                         {"role": "user", "content":
-                         "【反思】上面的结果是否完整达成了用户最初的目标？"
-                         "没达成就回「继续：还差什么」，达成了就回「完成」。"}], tools=[])
+                         "【反思】检查上面的结果是否已完整达成用户目标。"
+                         "已达成只回「完成」；没达成回「继续：还差什么」（一句话说清）。"}], tools=[])
                     review = (rm.get("content") or "").strip()
                     emit({"type": "review", "text": review})
-                    if "继续" in review and step < max_steps:
+                    if review.startswith("继续") and step < max_steps:
                         messages.append({"role": "user", "content": "还没完成，请继续：" + review})
                         continue
                 except Exception:
