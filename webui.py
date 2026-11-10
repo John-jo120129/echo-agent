@@ -33,30 +33,43 @@ PAGE = r"""<!DOCTYPE html>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>回声 Echo · 网页版</title>
 <style>
-:root{--bg:#f7f7f8;--panel:#ffffff;--border:#e6e6e8;--text:#1a1a1c;--muted:#6b6b72;--accent:#4f46e5;--accent-soft:#eef0ff;}
+:root{--bg:#f0f1f6;--panel:#ffffff;--border:#e6e6e8;--text:#1a1a1c;--muted:#6b6b72;--accent:#4f46e5;--accent-2:#7c3aed;--accent-soft:#eef0ff;}
 *{box-sizing:border-box}
-html,body{margin:0;height:100%;background:var(--bg);font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:var(--text)}
-#app{max-width:860px;height:100vh;margin:0 auto;display:flex;flex-direction:column;background:var(--panel)}
-header{height:56px;border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:10px;flex:none}
-header h1{font-size:16px;margin:0;font-weight:600}
-header .dot{width:8px;height:8px;border-radius:50%;background:#1d9e75}
-header .sub{font-size:12px;color:var(--muted)}
+html,body{margin:0;height:100%;background:linear-gradient(180deg,#e9ebff 0%,#f7f7f8 45%);font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:var(--text)}
+#app{max-width:860px;height:100vh;margin:0 auto;display:flex;flex-direction:column;background:var(--panel);box-shadow:0 0 48px rgba(79,70,229,.10)}
+header{height:60px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 20px;gap:12px;flex:none;background:#fff}
+.hd{display:flex;align-items:center;gap:10px}
+.brand{display:flex;flex-direction:column;line-height:1.25}
+.brand h1{margin:0;font-size:16px;font-weight:700;background:linear-gradient(90deg,var(--accent),var(--accent-2));-webkit-background-clip:text;background-clip:text;color:transparent}
+.brand .sub{font-size:11px;color:var(--muted)}
+.star{font-size:12px;color:var(--accent);text-decoration:none;padding:6px 12px;border:1px solid var(--accent-soft);border-radius:16px;transition:.2s;white-space:nowrap}
+.star:hover{background:var(--accent-soft)}
 #msgs{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:14px}
-.msg{max-width:82%;padding:10px 14px;border-radius:14px;line-height:1.6;font-size:14px;white-space:pre-wrap;word-break:break-word}
-.user{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:4px}
-.agent{align-self:flex-start;background:var(--bg);border-bottom-left-radius:4px}
-.phase{align-self:center;font-size:12px;color:var(--muted);padding:2px 10px;border-radius:10px;background:var(--accent-soft)}
+.msg{max-width:82%;padding:11px 15px;border-radius:16px;line-height:1.65;font-size:14px;white-space:pre-wrap;word-break:break-word;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.user{align-self:flex-end;background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff;border-bottom-right-radius:4px}
+.agent{align-self:flex-start;background:#f5f5f7;border-bottom-left-radius:4px}
+.phase{align-self:center;font-size:12px;color:var(--accent);padding:3px 12px;border-radius:12px;background:var(--accent-soft)}
 .step{align-self:flex-start;font-size:12px;color:var(--muted);font-family:ui-monospace,Consolas,monospace;padding:4px 10px;background:#f0f0f2;border-radius:8px;max-width:90%}
 .plan{color:#185fa5}.review{color:#993c1d}
-#input{flex:none;border-top:1px solid var(--border);padding:12px;display:flex;gap:10px}
-#input textarea{flex:1;height:52px;resize:none;border:1px solid var(--border);border-radius:10px;padding:10px;font-size:14px;font-family:inherit}
-#input button{width:76px;border:none;border-radius:10px;background:var(--accent);color:#fff;font-size:14px;cursor:pointer}
+#input{flex:none;border-top:1px solid var(--border);padding:12px;display:flex;gap:10px;background:#fff}
+#input textarea{flex:1;height:52px;resize:none;border:1px solid var(--border);border-radius:12px;padding:12px;font-size:14px;font-family:inherit;outline:none}
+#input textarea:focus{border-color:var(--accent)}
+#input button{width:76px;border:none;border-radius:12px;background:var(--accent);color:#fff;font-size:14px;cursor:pointer;transition:.15s}
+#input button:hover{background:var(--accent-2)}
 #input button:disabled{opacity:.5;cursor:default}
+#mic{width:52px;background:#fff;color:#1a1a1c;border:1px solid var(--border)}
+#mic:hover{background:var(--bg);border-color:var(--accent)}
 </style>
 </head>
 <body>
 <div id="app">
-  <header><span class="dot"></span><h1>回声 Echo</h1><span class="sub">本地自主 Agent · 实时看它干活</span></header>
+  <header>
+    <div class="hd">
+      <svg viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="12" r="9.5" fill="none" stroke="#4f46e5" stroke-width="1.5" opacity=".25"/><circle cx="12" cy="12" r="4.5" fill="#4f46e5"/><path d="M12 2.5c1.8 2.6 1.8 4.4 0 7M12 21.5c-1.8-2.6-1.8-4.4 0-7" fill="none" stroke="#4f46e5" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <div class="brand"><h1>回声 Echo</h1><span class="sub">本地自主 AI Agent</span></div>
+    </div>
+    <a class="star" href="/star" target="_blank">✦ 记忆星球</a>
+  </header>
   <div id="msgs"></div>
   <div id="input">
     <textarea id="inp" placeholder="说目标，或点🎤直接说话"></textarea>
