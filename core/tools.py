@@ -23,6 +23,7 @@ from core import rag
 from core import skills
 from core import computer
 from core import browser
+from core import video
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -408,6 +409,14 @@ TOOLS = [
         "description": "截当前浏览器页面。",
         "parameters": {"type": "object", "properties": {}}
     }},
+    {"type": "function", "function": {
+        "name": "video_understand",
+        "description": "理解一个视频文件的内容和动态（不是逐帧分析，而是采样关键帧序列整体理解）。返回视频讲了什么、发生了什么动作变化。",
+        "parameters": {"type": "object",
+                       "properties": {"path": {"type": "string", "description": "视频文件的绝对路径"},
+                                      "prompt": {"type": "string", "description": "想重点了解视频的什么（可选）"}},
+                       "required": ["path"]}
+    }},
 ]
 
 _IMPL = {
@@ -445,6 +454,7 @@ _IMPL = {
     "browser_click": lambda a: browser.browser_click(a.get("target", "")),
     "browser_type": lambda a: browser.browser_type(a.get("selector", ""), a.get("text", "")),
     "browser_screenshot": lambda a: browser.browser_screenshot(),
+    "video_understand": lambda a: video.video_understand(ctx.get("cfg", {}), a.get("path", ""), a.get("prompt")),
 }
 
 

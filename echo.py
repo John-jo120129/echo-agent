@@ -32,7 +32,7 @@ def load_config():
         "api_base": "http://localhost:11434/v1",
         "api_key": "ollama",
         "model": "qwen2.5:7b",
-        "vision_model": "qwen2.5vl:7b",
+        "vision_model": "qwen2.5vl-16k",
         "kb_dirs": ["kb"],
         "auto_confirm": False,
         "stealth": False,

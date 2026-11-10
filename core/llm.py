@@ -45,6 +45,7 @@ def call_vision(cfg, prompt, image_paths):
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": content}],
+        "options": {"num_ctx": 8192},   # 多帧图片需要更大的上下文窗口
         "stream": False
     }
     req = urllib.request.Request(
