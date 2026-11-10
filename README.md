@@ -29,8 +29,10 @@
 - **联网搜索**：本地知识库查不到的，自动用 `web_search` 搜全网（必应）+ `web_fetch` 抓正文
 - **长期记忆**：说过的事、待办、日记存在本地 `data/`，重启不丢
 - **电脑操控**：截屏、读屏幕文字（OCR）、读窗口控件（文字+坐标）、鼠标点击/移动/滚动、键盘输入——可视化/隐藏两种模式（`/stealth` 切换）
+- **网页自动化**：Playwright 驱动，打开网页、读内容、点击、填表、截图；隐藏模式=无头后台（真·隐藏），复用系统 Edge 免下载浏览器
+- **多模态看图**：`view_screen` 截屏发给 qwen2.5-vl 真正“看懂”屏幕画面（需 `ollama pull qwen2.5vl:7b`）
 - **安全机制**：危险命令（删除/格式化/关机等）执行前必须你按 `y` 确认；`/auto` 可切换
-- **零第三方大依赖**：核心只用 Python 标准库；电脑操控用 `pyautogui` + `uiautomation`（各一条 pip 即可装）
+- **零第三方大依赖**：核心只用 Python 标准库；电脑操控用 `pyautogui` + `uiautomation` + `playwright`（各一条 pip 即可装）
 - **模型自由**：默认本地 Ollama（免费、断网可用），改 3 行配置即可换任何 OpenAI 兼容 API
 
 ## 快速开始
@@ -39,7 +41,8 @@
 
 - Python 3.10+
 - [Ollama](https://ollama.com)（本地跑大模型用）
-- 电脑操控可选依赖：`pip install pyautogui uiautomation`（不用电脑操控可不装）
+- 电脑操控/网页自动化可选依赖：`pip install pyautogui uiautomation playwright`
+- 多模态看图可选：`ollama pull qwen2.5vl:7b`
 
 ### 三步启动
 
