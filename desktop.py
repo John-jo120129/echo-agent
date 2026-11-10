@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""desktop.py —— Echo 回声桌面应用（独立窗口，双击 exe 即用）
+"""desktop.py —— Echo 回声桌面版入口（双击 exe 即用）
 
-把网页版装进一个原生窗口，像 QQ、微信一样是个正经的桌面 App。
+启动后自动起本地服务并打开默认浏览器，稳定不闪退。
 """
 import os
 import sys
@@ -22,12 +22,22 @@ def _start_server():
 
 def main():
     threading.Thread(target=_start_server, daemon=True).start()
-    time.sleep(1)
-    import webview
-    webview.create_window(
-        "回声 Echo", "http://127.0.0.1:%d" % webui.PORT,
-        width=960, height=720, min_size=(600, 520))
-    webview.start()
+    time.sleep(1.5)
+    url = "http://127.0.0.1:%d" % webui.PORT
+    try:
+        import webbrowser
+        webbrowser.open(url)
+    except Exception:
+        pass
+    print("=" * 46)
+    print("  Echo 回声已启动，浏览器已自动打开：%s" % url)
+    print("  关闭本窗口即退出。")
+    print("=" * 46)
+    try:
+        while True:
+            time.sleep(3600)
+    except KeyboardInterrupt:
+        pass
 
 
 if __name__ == "__main__":
