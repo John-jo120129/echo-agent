@@ -10,4 +10,10 @@ config.local.json
 # 记忆星球（含个人记忆数据）
 memory_star.html
 
+# 打包产物
+build/
+dist/
+*.spec
+
+
 

@@ -73,6 +73,24 @@ python echo.py
 
 > 想要网页版界面？双击 `启动网页版.bat`（或 `python webui.py`），浏览器打开 http://127.0.0.1:8899；手机连同一 WiFi 也能访问（启动时会显示局域网地址）
 
+### 桌面版（.exe）
+
+想要一个正经的桌面 App？打包成独立窗口程序：
+
+```bash
+pip install pyinstaller pywebview
+python -m PyInstaller --onefile --name Echo桌面 desktop.py \
+  --add-data "persona.md;." --add-data "config.json;." \
+  --add-data "skills;skills" --add-data "kb;kb" \
+  --add-data "core/ocr.ps1;core" \
+  --collect-all pyautogui --collect-all uiautomation --collect-all webview \
+  --collect-all edge_tts --collect-all sounddevice \
+  --collect-all faster_whisper --collect-all ctranslate2 \
+  --collect-all onnxruntime --collect-all playwright
+```
+
+打包后 `dist/Echo桌面.exe`（约 150MB，双击即用，独立窗口）。
+
 然后直接说任务，例如：
 
 ```
