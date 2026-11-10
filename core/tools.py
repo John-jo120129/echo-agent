@@ -86,6 +86,19 @@ def t_write_file(args):
     return "已写入 %s（%d 字）" % (path, len(args["content"]))
 
 
+def t_open_app(args):
+    """用系统命令直接打开程序，比找图标双击可靠得多。"""
+    name = (args.get("name") or "").strip()
+    if not name:
+        return "没给程序名"
+    import subprocess
+    try:
+        subprocess.Popen('start "" %s' % name, shell=True)
+        return "已尝试打开：%s" % name
+    except Exception as e:
+        return "打开失败：%s" % e
+
+
 def t_list_dir(args):
     path = os.path.abspath(args.get("path", "."))
     if not os.path.isdir(path):
@@ -349,6 +362,13 @@ TOOLS = [
         "parameters": {"type": "object", "properties": {}}
     }},
     {"type": "function", "function": {
+        "name": "open_app",
+        "description": "直接打开一个程序（如 wps、微信、notepad、calc、explorer）。打开程序优先用这个，比找图标双击快得多、可靠得多。",
+        "parameters": {"type": "object",
+                       "properties": {"name": {"type": "string", "description": "程序名，如 wps、微信、notepad"}},
+                       "required": ["name"]}
+    }},
+    {"type": "function", "function": {
         "name": "view_screen",
         "description": "截屏并发给多模态模型真正'看懂'屏幕画面（文字、图标、窗口、布局）。需要判断屏幕上有什么、长什么样时用它。",
         "parameters": {"type": "object",
@@ -466,6 +486,7 @@ _IMPL = {
     "mouse_move": lambda a: computer.mouse_move(a.get("x", 0), a.get("y", 0)),
     "mouse_click": lambda a: computer.mouse_click(a.get("x"), a.get("y"), a.get("button", "left")),
     "mouse_double": lambda a: computer.mouse_double(a.get("x"), a.get("y")),
+    "open_app": t_open_app,
     "mouse_scroll": lambda a: computer.mouse_scroll(a.get("amount", 0)),
     "type_text": lambda a: computer.type_text(a.get("text", ""), bool(a.get("enter", False))),
     "press_key": lambda a: computer.press_key(a.get("key", "")),
