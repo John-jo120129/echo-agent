@@ -31,17 +31,20 @@ def call_llm(cfg, messages, tools):
 
 
 def call_vision(cfg, prompt, image_paths):
-    """把图片发给多模态模型看图理解。用 cfg 里的 vision_model。"""
+    """把图片发给多模态模型看图理解。用 cfg 里的 vision_model。
+    注意：走 /v1/chat/completions 时图片用 OpenAI 的 image_url 格式。"""
     import base64
-    images = []
+    content = [{"type": "text", "text": prompt}]
     for p in image_paths:
         with open(p, "rb") as f:
-            images.append(base64.b64encode(f.read()).decode("ascii"))
+            b64 = base64.b64encode(f.read()).decode("ascii")
+        content.append({"type": "image_url",
+                        "image_url": {"url": "data:image/png;base64," + b64}})
     model = cfg.get("vision_model", "qwen2.5vl:7b")
     url = cfg["api_base"].rstrip("/") + "/chat/completions"
     payload = {
         "model": model,
-        "messages": [{"role": "user", "content": prompt, "images": images}],
+        "messages": [{"role": "user", "content": content}],
         "stream": False
     }
     req = urllib.request.Request(

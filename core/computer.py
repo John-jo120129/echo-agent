@@ -172,7 +172,13 @@ def view_screen(cfg, prompt=None):
     prompt = prompt or ("请描述这个屏幕画面：上面有哪些窗口、按钮、图标、文字，"
                         "各自大致在什么位置。重点说清如果要操作应该点哪里。")
     os.makedirs(os.path.dirname(SCREEN_TMP), exist_ok=True)
-    pyautogui.screenshot().save(SCREEN_TMP)
+    img = pyautogui.screenshot()
+    # 缩到合适尺寸，避免超过视觉模型的输入上限
+    w, h = img.size
+    if max(w, h) > 1280:
+        scale = 1280.0 / max(w, h)
+        img = img.resize((int(w * scale), int(h * scale)))
+    img.save(SCREEN_TMP)
     try:
         return llm.call_vision(cfg, prompt, [SCREEN_TMP])
     except Exception as e:
