@@ -24,11 +24,13 @@ def main():
     threading.Thread(target=_start_server, daemon=True).start()
     time.sleep(1.5)
     url = "http://127.0.0.1:%d" % webui.PORT
-    try:
-        import webbrowser
-        webbrowser.open(url)
-    except Exception:
-        pass
+    # 调试时设 ECHO_NO_BROWSER=1 就不自动开浏览器，避免反复弹窗
+    if not os.environ.get("ECHO_NO_BROWSER"):
+        try:
+            import webbrowser
+            webbrowser.open(url)
+        except Exception:
+            pass
     print("=" * 46)
     print("  Echo 回声已启动，浏览器已自动打开：%s" % url)
     print("  关闭本窗口即退出。")
