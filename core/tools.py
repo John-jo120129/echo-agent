@@ -45,8 +45,22 @@ def _ask_confirm(prompt):
     return ctx["confirm_fn"](prompt)
 
 
-# 工具执行时需要的上下文（auto 模式开关、确认函数），由 echo.py 注入
-ctx = {"auto": False, "confirm_fn": lambda p: False}
+# 工具执行时需要的上下文（auto 模式开关、确认函数、提问函数），由 echo.py / webui.py 注入
+ctx = {"auto": False, "confirm_fn": lambda p: False, "ask_fn": None}
+
+
+def t_ask_user(args):
+    """让 agent 主动向用户提问并等选择（网页版弹窗，命令行 input）。"""
+    question = (args.get("question") or "").strip()
+    options = args.get("options") or []
+    if not question:
+        return "没有提问内容"
+    fn = ctx.get("ask_fn")
+    if not fn:
+        return "（当前环境不支持弹窗提问，请直接用文字说明你想让用户选什么）"
+    if not isinstance(options, list) or not options:
+        options = ["是", "否"]
+    return fn(question, [str(o)[:60] for o in options][:6])
 
 
 # ---------- 工具实现 ----------
@@ -390,6 +404,15 @@ TOOLS = [
         "parameters": {"type": "object", "properties": {}}
     }},
     {"type": "function", "function": {
+        "name": "ask_user",
+        "description": "向用户提问并等待选择（网页版会弹窗，命令行会等你输入）。任务中需要用户做决策、选方案、选文件、确认方向时用它，比自己瞎猜好。",
+        "parameters": {"type": "object",
+                       "properties": {"question": {"type": "string", "description": "要问用户的问题"},
+                                      "options": {"type": "array", "items": {"type": "string"},
+                                                  "description": "给用户的选项（2-4 个）"}},
+                       "required": ["question"]}
+    }},
+    {"type": "function", "function": {
         "name": "set_reminder",
         "description": "设一个提醒，到时间会主动告诉用户（agent 保持运行时有效）",
         "parameters": {"type": "object",
@@ -529,7 +552,7 @@ def select_tools(text):
     工具调用成功率大幅提升。所以按关键词挑一组相关工具给它。
     """
     t = (text or "").lower()
-    names = set()
+    names = {"ask_user"}   # 提问决策工具永远给：猜错不如问一句
 
     def add(*keys):
         for k in keys:
@@ -594,6 +617,7 @@ _IMPL = {
     "add_todo": lambda a: memory.add_todo(a.get("task", "")),
     "write_diary": lambda a: memory.write_diary(a.get("title", ""), a.get("content", "")),
     "get_time": lambda a: memory.now_str(),
+    "ask_user": t_ask_user,
     # 别名：小模型常把工具名记成这些，兜一下，别让它因为名字记错就卡住
     "get_datetime": lambda a: memory.now_str(),
     "get_current_time": lambda a: memory.now_str(),

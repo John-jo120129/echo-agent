@@ -21,9 +21,47 @@ HOST, PORT = "0.0.0.0", 8899   # 0.0.0.0 = 局域网也能访问（手机同 WiF
 cfg = load_config()
 tools.ctx["cfg"] = cfg
 tools.ctx["auto"] = cfg.get("auto_confirm", False)
-tools.ctx["confirm_fn"] = lambda p: False   # 网页版无法交互确认，危险操作一律拒绝
 computer.ctx["stealth"] = cfg.get("stealth", False)
 browser.ctx["stealth"] = cfg.get("stealth", False)
+
+# ---------- 网页版交互：危险操作确认 + Agent 提问（都走前端弹窗） ----------
+import threading
+import uuid
+
+_pending = {}                  # id -> {"ev": Event, "choice": None}
+_current_emit = {"fn": None}   # 当前请求的 SSE 推送函数
+
+
+def _ask_web(kind, question, options):
+    """推一个 ask 事件给前端弹窗，阻塞等用户选（最长 90 秒）。"""
+    emit = _current_emit.get("fn")
+    if not emit:
+        return None
+    aid = uuid.uuid4().hex[:8]
+    rec = {"ev": threading.Event(), "choice": None}
+    _pending[aid] = rec
+    try:
+        emit({"type": "ask", "id": aid, "kind": kind,
+              "question": question, "options": options})
+        rec["ev"].wait(timeout=90)
+        return rec["choice"]
+    finally:
+        _pending.pop(aid, None)
+
+
+def web_confirm(prompt):
+    """危险操作确认：弹窗问允许/拒绝，默认拒绝。"""
+    return _ask_web("confirm", prompt, ["允许", "拒绝"]) == "允许"
+
+
+def web_ask(question, options):
+    """Agent 主动提问：弹出选项让用户选。"""
+    c = _ask_web("question", question, options)
+    return ("用户选择：%s" % c) if c else "用户没有选择（超时，请自行决定）"
+
+
+tools.ctx["confirm_fn"] = web_confirm
+tools.ctx["ask_fn"] = web_ask
 
 # 多会话：默认打开最近一个，没有就新建
 _sess = sessionstore.ensure_default()
@@ -82,6 +120,17 @@ header{height:60px;border-bottom:1px solid var(--border);display:flex;align-item
 #input button:disabled{opacity:.5;cursor:default}
 #mic{width:52px;background:#fff;color:#1a1a1c;border:1px solid var(--border)}
 #mic:hover{background:var(--bg);border-color:var(--accent)}
+#imgBtn{width:52px;background:#fff;color:#1a1a1c;border:1px solid var(--border)}
+#imgBtn:hover{background:var(--bg);border-color:var(--accent)}
+.modal-mask{position:fixed;inset:0;background:rgba(20,20,30,.45);display:none;align-items:center;justify-content:center;z-index:50;backdrop-filter:blur(4px)}
+.modal-mask.show{display:flex}
+.modal{background:#fff;border-radius:18px;padding:22px;max-width:440px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.modal-title{font-size:12px;color:var(--muted);margin-bottom:8px}
+.modal-q{font-size:15px;line-height:1.65;margin-bottom:16px;white-space:pre-wrap;word-break:break-word}
+.modal-opts{display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-end}
+.modal-opts button{padding:9px 16px;border:1px solid var(--border);border-radius:10px;background:#fff;font-size:14px;cursor:pointer;transition:.15s}
+.modal-opts button:hover{border-color:var(--accent);color:var(--accent)}
+.modal-opts button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
 @media(max-width:600px){.star{font-size:11px;padding:4px 8px}.brand .sub{display:none}#input button{width:64px}.msg{max-width:90%}}
 </style>
 </head>
@@ -102,8 +151,17 @@ header{height:60px;border-bottom:1px solid var(--border);display:flex;align-item
   <div id="msgs"></div>
   <div id="input">
     <textarea id="inp" placeholder="说目标，或点🎤直接说话"></textarea>
+    <button id="imgBtn" title="发图片给它看">📷</button>
+    <input type="file" id="fileInput" accept="image/*" style="display:none">
     <button id="mic" title="说话">🎤</button>
     <button id="send">发送</button>
+  </div>
+</div>
+<div id="modal" class="modal-mask">
+  <div class="modal">
+    <div class="modal-title" id="mTitle">需要你确认</div>
+    <div class="modal-q" id="mQ"></div>
+    <div class="modal-opts" id="mOpts"></div>
   </div>
 </div>
 <script>
@@ -184,7 +242,75 @@ function render(ev){
     else add('msg agent', ev.text);
     if (voiceMode) speakAndPlay(ev.text);
   }
+  else if(t === 'ask'){ showAsk(ev); }
 }
+
+// ---- 弹窗：危险操作确认 / Agent 提问 ----
+const modal = document.getElementById('modal');
+const mTitle = document.getElementById('mTitle');
+const mQ = document.getElementById('mQ');
+const mOpts = document.getElementById('mOpts');
+let modalTimer = null;
+
+function showAsk(ev){
+  mTitle.textContent = ev.kind === 'confirm' ? '需要你确认' : '它想问你';
+  mQ.textContent = ev.question || '';
+  mOpts.innerHTML = '';
+  (ev.options && ev.options.length ? ev.options : ['确定']).forEach((opt, i) => {
+    const b = document.createElement('button');
+    b.textContent = opt;
+    if (i === 0) b.className = 'primary';
+    b.onclick = () => answerAsk(ev.id, opt);
+    mOpts.appendChild(b);
+  });
+  modal.classList.add('show');
+  // 90 秒没人点就自动收起（后端也会超时）
+  clearTimeout(modalTimer);
+  modalTimer = setTimeout(() => modal.classList.remove('show'), 90000);
+}
+
+async function answerAsk(id, choice){
+  modal.classList.remove('show');
+  try{
+    await fetch('/answer', {method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({id, choice})});
+  }catch(e){}
+}
+
+// ---- 图片上传：发图给它看 ----
+const imgBtn = document.getElementById('imgBtn');
+const fileInput = document.getElementById('fileInput');
+imgBtn.onclick = () => fileInput.click();
+fileInput.onchange = async () => {
+  const f = fileInput.files && fileInput.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = async () => {
+    const dataUrl = reader.result;
+    add('msg user', '📷 [图片] ' + f.name);
+    const d = add('msg agent', '正在看图…');
+    try{
+      const r = await fetch('/chat', {method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({message: '看看这张图片，说说里面有什么', image: dataUrl})});
+      const txt = await r.text();
+      // 简单处理：直接把 SSE 里的 reply 提取出来
+      let out = '';
+      txt.split('\n\n').forEach(ch => {
+        if (ch.startsWith('data: ')){
+          try{
+            const ev = JSON.parse(ch.slice(6));
+            if (ev.type === 'reply') out = ev.text;
+          }catch(e){}
+        }
+      });
+      d.textContent = out || '（没看懂这张图）';
+    }catch(e){ d.textContent = '图片分析失败：' + e; }
+  };
+  reader.readAsDataURL(f);
+  fileInput.value = '';
+};
 
 // ---- 多会话 ----
 const sessSel = document.getElementById('sessSel');
@@ -341,6 +467,21 @@ voiceBtn.onclick = async () => {
 </html>"""
 
 
+def _describe_image(cfg, data_url):
+    """把前端上传的 base64 图片交给视觉模型看，返回中文描述。"""
+    try:
+        import base64
+        b64 = data_url.split(",")[-1]
+        tmp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "_upload.png")
+        os.makedirs(os.path.dirname(tmp), exist_ok=True)
+        with open(tmp, "wb") as f:
+            f.write(base64.b64decode(b64))
+        from core import llm
+        return llm.call_vision(cfg, "用中文简要描述这张图：里面有什么、在做什么、有没有文字。", [tmp])
+    except Exception:
+        return ""
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
@@ -429,6 +570,20 @@ class Handler(BaseHTTPRequestHandler):
                     history = sessionstore.load_session(current_sid)
             self._json({"current": current_sid, "sessions": sessionstore.list_sessions()})
             return
+        if self.path == "/answer":
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(length).decode("utf-8"))
+                aid = body.get("id")
+                choice = body.get("choice")
+            except Exception:
+                aid, choice = None, None
+            rec = _pending.get(aid) if aid else None
+            if rec:
+                rec["choice"] = choice
+                rec["ev"].set()
+            self._json({"ok": bool(rec)})
+            return
         if self.path == "/speak":
             try:
                 length = int(self.headers.get("Content-Length", 0))
@@ -447,12 +602,20 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(audio)
             return
         if self.path == "/chat":
+            img = ""
             try:
                 length = int(self.headers.get("Content-Length", 0))
                 body = json.loads(self.rfile.read(length).decode("utf-8"))
                 msg = (body.get("message") or "").strip()
+                img = body.get("image") or ""
             except Exception:
                 msg = ""
+            if img:
+                desc = _describe_image(cfg, img)
+                if desc:
+                    msg = "【用户发来一张图片，视觉模型看到的内容：%s】\n%s" % (desc, msg)
+                else:
+                    msg = "（用户发来一张图片，但视觉模型没识别出内容，可以先说明没看到图）\n" + msg
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream; charset=utf-8")
             self.send_header("Cache-Control", "no-cache")
@@ -462,9 +625,12 @@ class Handler(BaseHTTPRequestHandler):
                 self._sse({"type": "reply", "text": "（空消息）"})
             else:
                 try:
+                    _current_emit["fn"] = self._sse
                     agent.run_agent(cfg, msg, history, self._sse)
                 except Exception as e:
                     self._sse({"type": "reply", "text": "出错：%s" % e})
+                finally:
+                    _current_emit["fn"] = None
                 sessionstore.save_session(current_sid, history)
                 memory.save_history(history)   # 兼容：老的单会话历史也留着
             self._sse({"type": "done"})

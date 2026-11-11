@@ -265,6 +265,21 @@ def chat(cfg):
     tools.ctx["auto"] = cfg.get("auto_confirm", False)
     tools.ctx["confirm_fn"] = confirm
     tools.ctx["cfg"] = cfg
+
+    def _ask_cli(question, options):
+        """命令行版：Agent 提问时就地让用户选。"""
+        print("\n回声问：%s" % question)
+        for i, o in enumerate(options, 1):
+            print("  %d. %s" % (i, o))
+        try:
+            ans = input("你的选择（序号或文字）：").strip()
+        except EOFError:
+            return "用户没有回答"
+        if ans.isdigit() and 1 <= int(ans) <= len(options):
+            ans = options[int(ans) - 1]
+        return ("用户选择：%s" % ans) if ans else "用户没有回答"
+
+    tools.ctx["ask_fn"] = _ask_cli
     computer.ctx["stealth"] = cfg.get("stealth", False)
     history = memory.load_history()
 
