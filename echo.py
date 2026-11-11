@@ -71,6 +71,18 @@ def local_command(user, cfg):
         return "EXIT"
     if cmd == "/help":
         print(HELP_TEXT)
+    elif cmd in ("/tasks", "/task"):
+        from core import taskstore
+        items = taskstore.recent_tasks(8)
+        if not items:
+            print("回声> 还没有任务记录。")
+        else:
+            print("回声> 最近的任务：")
+            for t in items:
+                mark = {"done": "✅", "failed": "❌", "running": "⏳"}.get(t.get("status"), "?")
+                print("  %s [%s] %s（%d 步）%s" % (
+                    mark, t.get("started", "")[-8:], (t.get("input") or "")[:30],
+                    t.get("steps", 0), t.get("reply", "")[:30]))
     elif cmd == "/time":
         print("回声> " + memory.now_str())
     elif cmd == "/auto":
@@ -206,6 +218,7 @@ HELP_TEXT = """可用指令：
   /schedule 时 任务  定时任务，如 /schedule 08:00 汇报今日天气
   /organize         把短期记忆归纳成你的画像
   /log              查看最近操作记录（它干过什么）
+  /tasks            查看最近的任务记录（做了什么、几步、成没成）
   /model 名字       换大脑模型（如 /model qwen2.5:14b）
   /reindex          重建知识库索引
   /star             生成并打开 3D 记忆星球
