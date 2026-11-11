@@ -200,19 +200,30 @@ def collect_all_memories():
 
 
 def search_memory(query, top=8):
-    """检索全部记忆（短期+长期+归档），返回相关的记忆条目。"""
+    """检索全部记忆，按分层优先级返回：画像 > 事实 > 长期 > 归档。
+
+    带 token 预算（总字数 900 上限），避免把上下文塞爆——
+    参考 TencentDB Agent Memory 的"按需装配、不整库灌入"。
+    """
     def match(text):
         return _similar(query, text) > 0.22 or any(w in text for w in query if len(w) >= 2)
 
     hits = []
+    # L3 画像（最高优先：用户偏好、身份，最精炼）
+    for k, v in load_profile().items():
+        if match("%s %s" % (k, v)):
+            hits.append(("画像", "%s：%s" % (k, v)))
+    # L1 事实
     for f in load_facts():
         if match(f["text"]):
-            hits.append(("短期", f["text"]))
+            hits.append(("事实", f["text"]))
+    # L2 长期
     for l in load_long_term():
         if match(l["text"]):
             hits.append(("长期", l["text"]))
+    # L0 归档（最后补充，条目最多但优先级最低）
     if os.path.isdir(MEMORIES_DIR):
-        for fn in sorted(os.listdir(MEMORIES_DIR)):
+        for fn in sorted(os.listdir(MEMORIES_DIR), reverse=True)[:12]:
             if not fn.endswith(".md"):
                 continue
             try:
@@ -224,9 +235,18 @@ def search_memory(query, top=8):
                 line = line.strip().lstrip("#-·* ")
                 if line and match(line):
                     hits.append(("归档(%s)" % fn[:10], line))
+
     if not hits:
         return "没找到相关记忆"
-    return "\n".join("- [%s] %s" % (k, v) for k, v in hits[:top])
+    # token 预算：总字数不超过 900，超了就截断（保住高优先级的）
+    out, total = [], 0
+    for k, v in hits[:top * 2]:
+        line = "- [%s] %s" % (k, v)
+        if total + len(line) > 900:
+            break
+        out.append(line)
+        total += len(line)
+    return "\n".join(out) if out else "没找到相关记忆"
 
 
 # ---------- 定时任务 ----------

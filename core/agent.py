@@ -72,6 +72,37 @@ def _inject_knowledge(user):
     return user
 
 
+def _maybe_save_skill(cfg, user_input, call_log, reply):
+    """成功完成的多步任务（>=3 次工具调用）→ 自动沉淀成技能。
+
+    参考 Hermes Agent：任务做完就把步骤、坑、验证方法写成 SKILL.md，
+    下次遇到类似任务能直接复用，不用从零试错。
+    """
+    if len(call_log) < 3:
+        return None
+    steps = "\n".join("- %s(%s) → %s" % (c["tool"], c["args"], c["result"])
+                      for c in call_log)
+    try:
+        r = llm.call_llm(cfg, [{"role": "user", "content":
+            "下面是一次成功完成的任务。请把它总结成一个可复用的技能，"
+            "直接输出 markdown（不要用代码块包裹），格式：\n"
+            "# 技能名\n## 适用场景\n## 步骤\n## 注意事项\n\n"
+            "任务：%s\n\n执行记录：\n%s" % (user_input, steps)}], tools=[])
+        md = (r.get("content") or "").strip()
+        if not md or len(md) < 80:
+            return None
+        first = (md.splitlines()[0] or "").lstrip("# ").strip() or "auto"
+        slug = re.sub(r"[^\w\u4e00-\u9fa5]", "_", first)[:24].strip("_") or "auto"
+        d = os.path.join(BASE_DIR, "skills", "auto_" + slug)
+        os.makedirs(d, exist_ok=True)
+        path = os.path.join(d, "SKILL.md")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(md)
+        return path
+    except Exception:
+        return None
+
+
 def _tool_failed(result):
     """工具结果里带这些词，就认为失败了，值得让模型修正重试。"""
     return any(w in str(result) for w in
@@ -148,6 +179,7 @@ def run_agent(cfg, user_input, history, emit, max_steps=None):
     reviewed = False
     auth_retried = False
     call_history = []
+    call_log = []          # 本次任务的所有工具调用，用于沉淀技能
     active_tools = tools.select_tools(user_input)   # 按意图挑工具，给小模型减负
     for step in range(1, max_steps + 1):
         msg = llm.call_llm(cfg, messages, active_tools,
@@ -190,6 +222,8 @@ def run_agent(cfg, user_input, history, emit, max_steps=None):
                     emit({"type": "step", "step": step, "tool": tool_name,
                           "args": raw_args[:80]})
                     result = tools.run_tool(tool_name, targs)
+                    call_log.append({"tool": tool_name, "args": raw_args[:120],
+                                     "result": str(result)[:150]})
                     messages.append({"role": "assistant", "content": reply})
                     if _tool_failed(result):
                         messages.append({"role": "user", "content":
@@ -225,6 +259,12 @@ def run_agent(cfg, user_input, history, emit, max_steps=None):
 
             emit({"type": "reply", "text": reply or "……"})
             history.append({"role": "assistant", "content": reply})
+            # 技能沉淀：多步任务成功后自动总结成 SKILL.md（config 里 auto_skill=false 可关）
+            if cfg.get("auto_skill", True):
+                try:
+                    _maybe_save_skill(cfg, user_input, call_log, reply)
+                except Exception:
+                    pass
             return reply
 
         messages.append(msg)
@@ -237,6 +277,8 @@ def run_agent(cfg, user_input, history, emit, max_steps=None):
                 args = {}
             emit({"type": "step", "step": step, "tool": fn["name"], "args": argstr})
             result = tools.run_tool(fn["name"], args)
+            call_log.append({"tool": fn["name"], "args": argstr[:120],
+                             "result": str(result)[:150]})
             messages.append({"role": "tool", "tool_call_id": tc.get("id", ""),
                              "content": str(result)})
             if _tool_failed(result):
