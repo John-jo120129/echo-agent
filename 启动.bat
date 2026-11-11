@@ -1,1 +1,1 @@
-@echo off & chcp 936 >nul & title Echo »ØÉù & cd /d "%~dp0" & python echo.py & pause
+@echo off & chcp 936 >nul & title Echo Agent & cd /d "%~dp0" & python echo.py & pause

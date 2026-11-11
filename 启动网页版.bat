@@ -1,1 +1,1 @@
-@echo off & chcp 936 >nul & title Echo Web ÍøÒ³°æ & cd /d "%~dp0" & python webui.py & pause
+@echo off & chcp 936 >nul & title Echo Web & cd /d "%~dp0" & python webui.py & pause
