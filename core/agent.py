@@ -72,6 +72,52 @@ def _inject_knowledge(user):
     return user
 
 
+def _extract_facts(cfg, user_input, reply):
+    """任务完成后，从对话里提取值得长期记住的事实/偏好（L1）。
+
+    保守策略：只提取用户明确说过的，没有就跳过。add_fact 自带去重。
+    """
+    try:
+        r = llm.call_llm(cfg, [{"role": "user", "content":
+            "从下面这轮对话里提取值得长期记住的事实或偏好（用户的名字/喜好/习惯/正在做的事）。\n"
+            "只提取明确说过的，不要猜、不要编。每条一行用「- 」开头；没有就只输出「无」。\n\n"
+            "用户：%s\nAI：%s" % (user_input[:300], (reply or "")[:300])}],
+            tools=[], temperature=0.2)
+        text = (r.get("content") or "").strip()
+        if not text or text.strip() == "无":
+            return 0
+        added = 0
+        for line in text.splitlines():
+            line = line.strip().lstrip("-·*• ").strip()
+            if line and line != "无" and 4 <= len(line) <= 100:
+                if "已记住" in memory.add_fact(line):
+                    added += 1
+        return added
+    except Exception:
+        return 0
+
+
+def _record_lesson(cfg, user_input, call_log):
+    """任务没干成 → 让模型总结教训写进长期记忆，下次别再踩同样的坑。
+
+    参考 Reflexion / CamoClaw：失败经验只有被写下来、下次能读到，才算"学习"。
+    """
+    if not call_log:
+        return
+    steps = "\n".join("- %s(%s) → %s" % (c["tool"], c["args"][:60], str(c["result"])[:80])
+                      for c in call_log[-10:])
+    try:
+        r = llm.call_llm(cfg, [{"role": "user", "content":
+            "下面这个任务没完成。请用一句话总结：失败原因 + 下次该怎么做。"
+            "直接给结论，不要客套。\n\n任务：%s\n\n执行记录：\n%s"
+            % (user_input, steps)}], tools=[], temperature=0.3)
+        lesson = (r.get("content") or "").strip()
+        if lesson and len(lesson) > 10:
+            memory.add_long_term("[教训] " + lesson[:200], kind="lesson")
+    except Exception:
+        pass
+
+
 def _maybe_save_skill(cfg, user_input, call_log, reply):
     """成功完成的多步任务（>=3 次工具调用）→ 自动沉淀成技能。
 
@@ -298,6 +344,12 @@ def run_agent(cfg, user_input, history, emit, max_steps=None):
                     _maybe_save_skill(cfg, user_input, call_log, reply)
                 except Exception:
                     pass
+            # 事实提炼：把对话里明确提到的偏好/信息记进长期记忆（config 里 auto_fact=false 可关）
+            if cfg.get("auto_fact", True):
+                try:
+                    _extract_facts(cfg, user_input, reply)
+                except Exception:
+                    pass
             taskstore.finish_task(task_id, "done", reply)
             return reply
 
@@ -321,5 +373,10 @@ def run_agent(cfg, user_input, history, emit, max_steps=None):
                     "工具 %s 执行失败（见上面结果），请检查参数后重试，或换一个方法。" % fn["name"]})
 
     emit({"type": "reply", "text": "走了 %d 步还没完成，先停下汇报，可以说「继续」。" % max_steps})
+    # 没干成 → 把教训记下来，下次别再踩
+    try:
+        _record_lesson(cfg, user_input, call_log)
+    except Exception:
+        pass
     taskstore.finish_task(task_id, "failed", "超过最大步数")
     return ""
