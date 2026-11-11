@@ -1,182 +1,162 @@
 # Echo 回声 —— 完全跑在你自己电脑上的 AI Agent
 
 > 你喊一声，必有回应。
->
-> 不依赖任何云端服务、不上传任何数据、断网可用、代码全开源。
+> 不依赖云端、不上传数据、断网可用、代码全开源。
 
-## 这是什么
+**它不是聊天机器人，是真正会自己干活的 Agent。** 你说目标，它自己拆步骤、自己动手（跑命令、读写文件、抓网页、操控鼠标键盘），看结果、自己纠错，干完才向你汇报。
 
-一个**真正会自己干活的本地 AI Agent**，不是聊天机器人。
+---
 
-你说目标，它自己拆步骤、自己动手（跑命令、读写文件、抓网页、查知识库），
-看结果、再决定下一步，干完才向你汇报：
+## 🚀 三步开始（Windows）
+
+### 1. 装两个东西
+| 需要 | 在哪装 | 注意 |
+|------|--------|------|
+| **[Python 3.10+](https://www.python.org/downloads/)** | 官网 | 安装时**一定勾选** `Add Python to PATH` |
+| **[Ollama](https://ollama.com)** | 官网 | 装完它会在后台常驻 |
+
+### 2. 下载本项目
+- **方式 A（推荐）**：在本页点绿色 `Code` → `Download ZIP` → 解压
+- **方式 B**：`git clone https://github.com/John-jo120129/echo-agent.git`
+
+### 3. 双击安装，再双击启动
+```
+双击 安装.bat        ← 自动装依赖、检查 Ollama、可选下模型
+双击 启动.bat        ← 命令行版
+双击 启动网页版.bat   ← 网页版（浏览器里聊，推荐）
+```
+
+网页版打开后访问 **http://127.0.0.1:8899**
+
+> 第一次用网页版如果提示缺浏览器内核，跑一次：`python -m playwright install chromium`
+
+---
+
+## 💡 它能干什么
+
+**说人话，它自己干：**
 
 ```
-你说: 帮我写一个脚本，功能是打印1到100的和，写完自己运行验证
-
-回声: [第1步] write_file(workspace/calc.py)
-      [第2步] run_command(python calc.py)   ← 发现转义写错了
+你：帮我写个脚本打印 1 到 100 的和，写完自己跑一遍验证
+回声：[第1步] write_file(calc.py)
+      [第2步] run_command(python calc.py)   ← 发现写错了
       [第3步] write_file(重写)               ← 自己发现、自己改
       [第4步] run_command(python calc.py)   → 5050 ✓
-      已完成，结果为 5050，文件在 workspace/calc.py
+      已完成，结果 5050，文件在 workspace/calc.py
 ```
 
-## 核心特性
+**能力清单：**
 
-- **自主任务循环**：最多 20 步，模型每步自己决定用什么工具、观察结果、自我纠错
-- **真实工具**：执行命令、读写文件、列目录、搜文件、抓网页正文
-- **RAG 知识库**：把 `.md` 文件放进 `kb/`，运行 `/reindex`，它就能答知识库里的问题
-- **联网搜索**：本地知识库查不到的，自动用 `web_search` 搜全网（必应）+ `web_fetch` 抓正文
-- **长期记忆**：说过的事、待办、日记存在本地 `data/`，重启不丢
-- **电脑操控**：截屏、读屏幕文字（OCR）、读窗口控件（文字+坐标）、鼠标点击/移动/滚动、键盘输入——可视化/隐藏两种模式（`/stealth` 切换）
-- **网页自动化**：Playwright 驱动，打开网页、读内容、点击、填表、截图；隐藏模式=无头后台（真·隐藏），复用系统 Edge 免下载浏览器
-- **多模态看图**：`view_screen` 截屏发给 qwen2.5-vl 真正“看懂”屏幕画面（需 `ollama pull qwen2.5vl:7b`）
-- **视频理解**：`video_understand` 采样关键帧序列（非逐帧）理解视频内容、动作和动态变化
-- **语音输入**：`/listen` 或网页版 🎤 按钮，麦克风录音 → faster-whisper 本地转文字，直接说给它听
-- **语音输出**：`/speak` 或自动朗读（`/speak_auto`），edge-tts 中文朗读回复
-- **定时任务**：`/schedule 08:00 任务`，到点自动执行（如每天早汇报天气）
-- **流式回复**：回复边生成边显示，不用干等
-- **操作日志**：每次工具调用都记进日志，`/log` 可回看它干过什么
-- **自我进化**：改自己的核心代码自动备份，可说"给你加个新能力"让它自己加工具
-- **多 Agent 协作**：每个任务走「规划→执行→反思」三阶段，像规划师+执行者+审阅员协作（`/multi` 切换）
-- **网页版界面**：`python webui.py` 起本地网页聊天窗口，SSE 流式实时看 agent 思考+干活，还能看记忆星球
-- **安全机制**：危险命令（删除/格式化/关机等）执行前必须你按 `y` 确认；`/auto` 可切换
-- **零第三方大依赖**：核心只用 Python 标准库；电脑操控用 `pyautogui` + `uiautomation` + `playwright`（各一条 pip 即可装）
-- **模型自由**：默认本地 Ollama（免费、断网可用），改 3 行配置即可换任何 OpenAI 兼容 API
+| 类别 | 能干什么 |
+|------|---------|
+| 🔧 **动手** | 执行命令、读写文件、列目录、搜文件 |
+| 🖱️ **控电脑** | 截屏、OCR 读屏、读控件坐标、鼠标点击/双击/拖动、键盘输入 |
+| 🌐 **上网** | 搜全网、抓网页正文、Playwright 操作浏览器（点按钮、填表、截图）|
+| 👀 **看图** | 截屏发给视觉模型真"看懂"画面（需 `qwen2.5vl:7b`）|
+| 🎬 **看视频** | 采样关键帧理解视频内容和动作（不是逐帧）|
+| 🎤 **语音** | 说话输入（本地 whisper 转文字）、朗读回复（edge-tts）|
+| 🧠 **记忆** | 长期记忆、用户画像、知识库 RAG、技能自动沉淀 |
+| ⏰ **定时** | `/schedule 08:00 汇报天气`，到点自动干 |
+| 🔁 **多 Agent** | 每个任务走「规划 → 执行 → 反思」三阶段 |
 
-## 快速开始
+**安全设计：**
+- 危险命令（删除/格式化/关机）必须你按 `y` 确认
+- 往项目外写文件要确认
+- 每次工具调用都记日志，`/log` 可回看
+- 改自己代码前自动备份，改坏了能恢复
 
-### 环境要求
+---
 
-- Python 3.10+
-- [Ollama](https://ollama.com)（本地跑大模型用）
-- 电脑操控/网页自动化可选依赖：`pip install pyautogui uiautomation playwright`
-- 多模态看图可选：`ollama pull qwen2.5vl:7b`
-- 视频理解依赖：ffmpeg（自动发现，或配置 `ffmpeg_path`）+ `ollama create qwen2.5vl-16k -f Modelfile.vl`
-- 语音输入依赖：`pip install faster-whisper sounddevice`（首次会下载 small 模型约 480MB，走 HF 镜像）
+## ⌨️ 常用命令
 
-### 三步启动
+| 命令 | 作用 |
+|------|------|
+| `/help` | 全部指令 |
+| `/model qwen2.5:14b` | 换大脑模型 |
+| `/listen` | 语音输入 |
+| `/speak_auto` | 回复自动朗读 |
+| `/multi` | 开关多 Agent（规划/执行/反思）|
+| `/tasks` | 看最近做了什么 |
+| `/log` | 看操作日志 |
+| `/star` | 3D 记忆星球 |
+| `/reindex` | 重建知识库索引 |
+| `/exit` | 退出 |
 
-> **懒人版**：Windows 直接双击 `安装.bat`，自动装依赖 + 检查 Ollama + 下载模型，然后双击 `启动.bat`（命令行）或 `启动网页版.bat`（网页版）即可。
+---
 
-```bash
-# 1. 下载一个大脑（二选一，首次需要）
-ollama pull qwen2.5:7b        # 快，约 4.7GB，8GB 显存全速
-ollama pull qwen2.5:14b       # 更聪明，约 9GB，速度中等
+## ❓ 常见问题
 
-# 2. 启动（Windows 双击 启动.bat）
-python echo.py
+### 双击 bat 出现一堆"不是内部或外部命令"
+**原因**：txt 编辑器把文件存成了 UTF-8 / 改了换行，Windows 批处理解析崩了。
 
-# 3. 建知识库索引（可选，往 kb/ 放了 .md 文件后执行一次）
-/reindex
+**解决**：
+1. 重新下载（别用记事本打开再保存）
+2. 或者直接命令行跑：`python echo.py`
+
+> 我们的 bat 已经写成纯 ASCII 单行，正常下载不会出这个问题。
+
+### 提示 `python 不是内部或外部命令`
+Python 没装或没勾选 `Add Python to PATH`。重装时勾上，或改用 `py` 命令。
+
+### 提示连不上模型 / 大脑离线
+Ollama 没启动。终端执行：
+```
+ollama serve
+```
+或重启 Ollama。
+
+### 模型没下载
+```
+ollama pull qwen2.5:7b          # 大脑（必装，4.7G）
+ollama pull mxbai-embed-large   # 知识库向量（0.7G）
+ollama pull qwen2.5vl:7b        # 看图/视频（可选，6G）
 ```
 
-> 想要网页版界面？双击 `启动网页版.bat`（或 `python webui.py`），浏览器打开 http://127.0.0.1:8899；手机连同一 WiFi 也能访问（启动时会显示局域网地址）
+### 卡 / 慢
+- 8G 显存跑 7b 刚好，14b 会有一半跑 CPU（慢但更聪明）
+- 换模型：`/model qwen2.5:7b`
 
-### 桌面版（.exe）
+---
 
-想要一个正经的桌面 App？打包成独立窗口程序：
+## 🧱 技术栈
 
-```bash
-pip install pyinstaller pywebview
-python -m PyInstaller --onefile --name Echo桌面 desktop.py \
-  --add-data "persona.md;." --add-data "config.json;." \
-  --add-data "skills;skills" --add-data "kb;kb" \
-  --add-data "core/ocr.ps1;core" \
-  --collect-all pyautogui --collect-all uiautomation --collect-all webview \
-  --collect-all edge_tts --collect-all sounddevice \
-  --collect-all faster_whisper --collect-all ctranslate2 \
-  --collect-all onnxruntime --collect-all playwright
-```
+| 层 | 用什么 |
+|----|--------|
+| 大脑 | 本地 Ollama（任意 OpenAI 兼容 API 都能换）|
+| 编排 | 自己写的（零框架依赖，核心只用标准库）|
+| 电脑操控 | pyautogui + uiautomation（Windows UI Automation，不吃显卡）|
+| 浏览器 | Playwright（复用系统 Edge，免下载内核）|
+| 语音 | faster-whisper（听）+ edge-tts（说）|
+| 界面 | 原生 HTML/CSS/JS + Python HTTP 服务（SSE 流式）|
 
-打包后 `dist/Echo桌面.exe`（约 150MB，双击即用，独立窗口）。
-
-然后直接说任务，例如：
-
-```
-帮我在 workspace 里写一个网页版贪吃蛇，写完自己测试
-知识库里关于 RAG 的内容，总结给我
-帮我联网搜一下 2026 年诺贝尔物理学奖得主是谁
-记住：我每周五有英语课
-```
-
-## 项目结构
-
+**项目结构：**
 ```
 echo-agent/
-├── echo.py          # 入口：主循环、本地指令、确认机制
+├── echo.py            # 命令行入口
+├── webui.py           # 网页版入口
+├── desktop.py         # 桌面 exe 入口
+├── install.py         # 一键安装
 ├── core/
-│   ├── llm.py       # 大脑：OpenAI 兼容 API 调用 + 向量化
-│   ├── tools.py     # 双手：12 个工具的定义与执行（含安全检查）
-│   ├── memory.py    # 记忆：事实/待办/日记/历史/提醒
-│   └── rag.py       # 知识库：切块、向量化、检索
-├── persona.md       # 人设：改这个文件 = 换性格，不用改代码
-├── config.json      # 配置：模型、API 地址、自动确认开关
-├── kb/              # 知识库：放你的 .md/.txt 知识文件
-├── data/            # 运行数据（记忆、索引、历史）——不要提交到 git
-└── workspace/       # 它默认的干活范围
+│   ├── agent.py       # 主循环（规划-执行-反思）
+│   ├── llm.py         # 模型接口
+│   ├── tools.py       # 工具集（30+ 个）
+│   ├── memory.py      # 记忆
+│   ├── skills.py      # 技能加载
+│   ├── taskstore.py   # 任务持久化
+│   ├── computer.py    # 电脑操控
+│   ├── browser.py     # 浏览器
+│   └── ...
+├── skills/            # 技能（自动沉淀的也在里面）
+├── kb/                # 知识库（丢 .md 进去就行）
+└── tests.py           # 工具调用测试集（20 条）
 ```
 
-## 工作原理
+---
 
-Agent 的心脏是 `echo.py` 里的任务循环：
+## 📜 License
 
-```
-你的目标 → 大脑思考 → 返回 tool_calls（我要用某工具）
-        → 代码执行工具 → 结果喂回大脑 → 观察 → 继续或汇报
-```
+MIT —— 随便用、随便改、随便发。
 
-大模型本身碰不到你的电脑——它只能"点菜"（返回工具名+参数），
-所有执行都由 `core/tools.py` 完成，危险动作有确认机制保底。
+---
 
-## 常用指令
-
-| 指令 | 作用 |
-|------|------|
-| `/help` | 查看全部指令 |
-| `/auto` | 切换危险命令自动确认（新手别开） |
-| `/model qwen2.5:14b` | 热切换大脑模型 |
-| `/reindex` | 重建知识库索引 |
-| `/memory` / `/remember 内容` | 查看 / 添加长期记忆 |
-| `/todo` / `/addtodo 内容` / `/done 编号` | 待办管理 |
-| `/exit` | 退出（自动保存对话历史） |
-
-## 换模型 / 接云端 API
-
-编辑 `config.json`：
-
-```jsonc
-{
-  "api_base": "http://localhost:11434/v1",  // Ollama 本地
-  "api_key": "ollama",
-  "model": "qwen2.5:7b"
-}
-```
-
-接 DeepSeek 官方 API（几块钱用很久）：
-
-```jsonc
-{
-  "api_base": "https://api.deepseek.com/v1",
-  "api_key": "你的key",
-  "model": "deepseek-chat"
-}
-```
-
-代码一行不用改。
-
-## 给它加新能力
-
-1. 在 `core/tools.py` 的 `TOOLS` 列表照抄一个工具定义（这是给模型看的菜单）
-2. 在 `_IMPL` 字典里加一行 `"工具名": 实现函数`
-3. 完成。模型发现菜单上有这道菜，需要时就会点
-
-## 安全须知
-
-- 它能真实执行命令。危险命令有 y/n 确认，但**请自己读一遍它要做什么**
-- `data/` 和 `workspace/` 含你的个人数据，开源发布时别提交（已有 .gitignore）
-- 建议让它默认在 `workspace/` 里干活
-
-## License
-
-MIT，见 [LICENSE](LICENSE)
+> 山谷里喊一声，必有回音。
