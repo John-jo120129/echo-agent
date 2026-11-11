@@ -278,7 +278,7 @@ TOOLS = [
     }},
     {"type": "function", "function": {
         "name": "write_file",
-        "description": "把内容写入本地文件（新建或覆盖）。只用于新建文件或整文件重写。修改已有文件请优先用 edit_file，避免把原有内容改丢。",
+        "description": "把内容保存到本地文件（新建或覆盖）。只要用户提到文件路径/文件名（如 a.txt、D:/xxx），就是用这个，不是键盘打字。修改已有文件请优先用 edit_file。",
         "parameters": {"type": "object",
                        "properties": {"path": {"type": "string", "description": "目标路径"},
                                       "content": {"type": "string", "description": "完整文件内容"}},

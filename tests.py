@@ -24,7 +24,7 @@ CASES = [
     {"in": "打开记事本", "expect": ["open_app"]},
     {"in": "双击桌面上的 Blender 图标", "expect": ["mouse_double"]},
     {"in": "看看我的屏幕上有什么", "expect": ["read_screen", "view_screen"]},
-    {"in": "把「你好」写到 D:/echo-agent/workspace/a.txt 里", "expect": ["write_file"]},
+    {"in": "把「你好」保存到文件 D:/echo-agent/workspace/a.txt", "expect": ["write_file"]},
     {"in": "读一下 D:/echo-agent/config.json 的内容", "expect": ["read_file"]},
     {"in": "列一下 D:/echo-agent 目录里有什么", "expect": ["list_dir"]},
     {"in": "执行命令 ipconfig 看看本机 IP", "expect": ["run_command"]},
