@@ -539,4 +539,13 @@ if __name__ == "__main__":
             print("\n⚠️  " + _msg + "\n")
     except Exception:
         pass
+    try:
+        from core import taskstore as _ts
+        _last = _ts.last_running()
+        if _last:
+            print("\n📌 上次有个任务没做完：「%s」（走到第 %d 步）"
+                  % (_last.get("input", "")[:40], _last.get("steps", 0)))
+            print("   想接着做就重新说一遍目标，Echo 会参考上次的记录。\n")
+    except Exception:
+        pass
     chat(_cfg)

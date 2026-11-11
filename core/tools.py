@@ -589,6 +589,10 @@ _IMPL = {
     "add_todo": lambda a: memory.add_todo(a.get("task", "")),
     "write_diary": lambda a: memory.write_diary(a.get("title", ""), a.get("content", "")),
     "get_time": lambda a: memory.now_str(),
+    # 别名：小模型常把工具名记成这些，兜一下，别让它因为名字记错就卡住
+    "get_datetime": lambda a: memory.now_str(),
+    "get_current_time": lambda a: memory.now_str(),
+    "current_time": lambda a: memory.now_str(),
     "speak": lambda a: voice.speak(a.get("text", "")),
     "set_reminder": t_set_reminder,
     "screenshot": lambda a: computer.screenshot(),

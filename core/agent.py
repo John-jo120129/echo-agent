@@ -12,7 +12,7 @@ import json
 import os
 import re
 
-from core import llm, memory, rag, skills, tools
+from core import llm, memory, rag, skills, tools, taskstore
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PERSONA_PATH = os.path.join(BASE_DIR, "persona.md")
@@ -144,6 +144,7 @@ def run_agent(cfg, user_input, history, emit, max_steps=None):
     max_steps = max_steps or MAX_STEPS
     multi = cfg.get("multi_agent", True)
     plan = ""
+    task_id = taskstore.start_task(user_input)   # 任务持久化：开跑就落盘
     content = _inject_knowledge(user_input)
     history.append({"role": "user", "content": content})
 
@@ -154,6 +155,7 @@ def run_agent(cfg, user_input, history, emit, max_steps=None):
         result = tools.run_tool("open_app", {"name": m.group(1)})
         emit({"type": "reply", "text": result})
         history.append({"role": "assistant", "content": result})
+        taskstore.finish_task(task_id, "done", result)
         return result
 
     messages = ([{"role": "system", "content": build_system(cfg)}]
@@ -171,7 +173,8 @@ def run_agent(cfg, user_input, history, emit, max_steps=None):
                 emit({"type": "plan", "text": plan})
                 messages.append({"role": "assistant", "content": "计划：" + plan})
                 messages.append({"role": "user", "content":
-                    "按上面的计划立刻开始执行，直接调用工具行动，不要问用户确认，也不要停在'我打算…'就结束。"})
+                    "用户的原话是：「%s」。现在就按计划直接调用工具完成它，不要问确认，也不要停在'我打算…'。"
+                    % user_input})
         except Exception:
             pass
 
@@ -191,6 +194,7 @@ def run_agent(cfg, user_input, history, emit, max_steps=None):
                    "请检查 Ollama 是否在运行：打开终端执行 ollama serve，或重启 Ollama 后再试。") % e
             emit({"type": "reply", "text": err})
             history.append({"role": "assistant", "content": err})
+            taskstore.finish_task(task_id, "failed", err)
             return err
         calls = msg.get("tool_calls")
         if not calls:
@@ -231,6 +235,7 @@ def run_agent(cfg, user_input, history, emit, max_steps=None):
                     result = tools.run_tool(tool_name, targs)
                     call_log.append({"tool": tool_name, "args": raw_args[:120],
                                      "result": str(result)[:150]})
+                    taskstore.update_task(task_id, step, call_log)
                     messages.append({"role": "assistant", "content": reply})
                     if _tool_failed(result):
                         messages.append({"role": "user", "content":
@@ -272,6 +277,7 @@ def run_agent(cfg, user_input, history, emit, max_steps=None):
                     _maybe_save_skill(cfg, user_input, call_log, reply)
                 except Exception:
                     pass
+            taskstore.finish_task(task_id, "done", reply)
             return reply
 
         messages.append(msg)
@@ -286,6 +292,7 @@ def run_agent(cfg, user_input, history, emit, max_steps=None):
             result = tools.run_tool(fn["name"], args)
             call_log.append({"tool": fn["name"], "args": argstr[:120],
                              "result": str(result)[:150]})
+            taskstore.update_task(task_id, step, call_log)
             messages.append({"role": "tool", "tool_call_id": tc.get("id", ""),
                              "content": str(result)})
             if _tool_failed(result):
@@ -293,4 +300,5 @@ def run_agent(cfg, user_input, history, emit, max_steps=None):
                     "工具 %s 执行失败（见上面结果），请检查参数后重试，或换一个方法。" % fn["name"]})
 
     emit({"type": "reply", "text": "走了 %d 步还没完成，先停下汇报，可以说「继续」。" % max_steps})
+    taskstore.finish_task(task_id, "failed", "超过最大步数")
     return ""
