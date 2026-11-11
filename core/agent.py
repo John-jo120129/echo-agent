@@ -72,6 +72,42 @@ def _inject_knowledge(user):
     return user
 
 
+def _tool_failed(result):
+    """工具结果里带这些词，就认为失败了，值得让模型修正重试。"""
+    return any(w in str(result) for w in
+               ("失败", "错误", "读不了", "不存在", "没找到", "拒绝", "出错", "缺少", "不允许"))
+
+
+def _compress_history(cfg, history):
+    """history 太长时，把早期对话压缩成摘要（而不是硬截断丢信息）。
+
+    参考 RECAP/TencentDB Agent Memory 的思路：瓶颈从"模型能记多少"转移到"摘要写得好不好"。
+    """
+    if len(history) <= 24:
+        return history
+    old = history[:-12]
+    recent = history[-12:]
+    lines = []
+    for m in old:
+        role = "用户" if m.get("role") == "user" else "AI"
+        text = (m.get("content") or "").strip()
+        if text:
+            lines.append("%s：%s" % (role, text[:150]))
+    if not lines:
+        return history[-24:]
+    try:
+        r = llm.call_llm(cfg, [{"role": "user", "content":
+            "把下面这段早前对话压缩成一段简短摘要（150 字内）。"
+            "只保留：用户的关键信息/偏好、已完成的事、重要结论。不要编造。\n\n"
+            + "\n".join(lines)}], tools=[])
+        summary = (r.get("content") or "").strip()
+        if summary:
+            return [{"role": "system", "content": "【早前对话摘要】" + summary}] + recent
+    except Exception:
+        pass
+    return history[-24:]
+
+
 def run_agent(cfg, user_input, history, emit, max_steps=None):
     """执行一次完整任务，emit(event) 推送过程事件。返回最终回复文本。"""
     max_steps = max_steps or MAX_STEPS
@@ -89,7 +125,8 @@ def run_agent(cfg, user_input, history, emit, max_steps=None):
         history.append({"role": "assistant", "content": result})
         return result
 
-    messages = [{"role": "system", "content": build_system(cfg)}] + history[-30:]
+    messages = ([{"role": "system", "content": build_system(cfg)}]
+                + _compress_history(cfg, history))
 
     # 阶段1：规划
     if multi:
@@ -153,8 +190,13 @@ def run_agent(cfg, user_input, history, emit, max_steps=None):
                           "args": raw_args[:80]})
                     result = tools.run_tool(tool_name, targs)
                     messages.append({"role": "assistant", "content": reply})
-                    messages.append({"role": "user",
-                                     "content": "工具 %s 执行结果：%s" % (tool_name, result)})
+                    if _tool_failed(result):
+                        messages.append({"role": "user", "content":
+                            "工具 %s 执行失败：%s\n请检查参数（路径/内容是否正确），修正后重试，或换一个方法。"
+                            % (tool_name, result)})
+                    else:
+                        messages.append({"role": "user",
+                                         "content": "工具 %s 执行结果：%s" % (tool_name, result)})
                     continue
 
             # 兜底：主循环没内容时，用规划阶段的文本（模型可能把话都说在计划里了）
@@ -196,6 +238,9 @@ def run_agent(cfg, user_input, history, emit, max_steps=None):
             result = tools.run_tool(fn["name"], args)
             messages.append({"role": "tool", "tool_call_id": tc.get("id", ""),
                              "content": str(result)})
+            if _tool_failed(result):
+                messages.append({"role": "user", "content":
+                    "工具 %s 执行失败（见上面结果），请检查参数后重试，或换一个方法。" % fn["name"]})
 
     emit({"type": "reply", "text": "走了 %d 步还没完成，先停下汇报，可以说「继续」。" % max_steps})
     return ""
