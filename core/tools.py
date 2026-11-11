@@ -482,10 +482,15 @@ TOOLS = [
     }},
     {"type": "function", "function": {
         "name": "browser_click",
-        "description": "点击网页上的元素。target 可以是可见文字（如'登录'）或 CSS 选择器（如'#submit'）。",
+        "description": "点击网页上的元素。target 可以是可见文字（如'登录'）或 CSS 选择器（如'#submit'）。点不到时先调 browser_get_elements 看页面上有什么。",
         "parameters": {"type": "object",
                        "properties": {"target": {"type": "string", "description": "要点的文字或选择器"}},
                        "required": ["target"]}
+    }},
+    {"type": "function", "function": {
+        "name": "browser_get_elements",
+        "description": "列出当前网页上所有可点击的元素（文字、标签、坐标）。不确定页面上有什么按钮/链接时先用它，比截图省 token 也更准。",
+        "parameters": {"type": "object", "properties": {}}
     }},
     {"type": "function", "function": {
         "name": "browser_type",
@@ -546,7 +551,7 @@ def select_tools(text):
     # 网页 / 浏览器
     if any(w in t for w in ("网页", "网站", "搜索", "百度", "浏览器", "http", "链接", "联网")):
         add("web_search", "web_fetch", "browser_open", "browser_read",
-            "browser_click", "browser_fill", "browser_screenshot")
+            "browser_click", "browser_type", "browser_get_elements", "browser_screenshot")
 
     # 知识库 / 记忆
     if any(w in t for w in ("知识", "记住", "记忆", "回忆", "以前", "之前", "待办", "提醒",
@@ -607,8 +612,9 @@ _IMPL = {
     "type_text": lambda a: computer.type_text(a.get("text", ""), bool(a.get("enter", False))),
     "press_key": lambda a: computer.press_key(a.get("key", "")),
     "browser_open": lambda a: browser.browser_open(a.get("url", "")),
-    "browser_read": lambda a: browser.browser_read(),
+    "browser_read": lambda a: _wrap_untrusted(browser.browser_read()),
     "browser_click": lambda a: browser.browser_click(a.get("target", "")),
+    "browser_get_elements": lambda a: browser.browser_get_elements(),
     "browser_type": lambda a: browser.browser_type(a.get("selector", ""), a.get("text", "")),
     "browser_screenshot": lambda a: browser.browser_screenshot(),
     "video_understand": lambda a: video.video_understand(ctx.get("cfg", {}), a.get("path", ""), a.get("prompt")),

@@ -72,15 +72,77 @@ def browser_read(maxlen=4000):
     return text[:maxlen] or "（页面没读到文字）"
 
 
+def browser_get_elements(max_items=40):
+    """列出页面上可交互的元素（文字 + 标签 + id），让模型"看见"页面结构。
+
+    这就是"DOM 感知"：比截图省 token、定位更准；DOM 拿不到时再用 view_screen 兜底。
+    """
+    page = _get_page()
+    js = """() => {
+      const els = [...document.querySelectorAll(
+        'a,button,input,textarea,select,[role=button],[onclick]')];
+      const out = [];
+      for (const e of els) {
+        const text = (e.innerText || e.value || e.placeholder || e.name || '').trim();
+        const rect = e.getBoundingClientRect();
+        if (!text || rect.width === 0 || rect.height === 0) continue;
+        out.push({
+          tag: e.tagName.toLowerCase(),
+          text: text.slice(0, 40),
+          id: e.id || '',
+          cls: (typeof e.className === 'string' ? e.className : '').slice(0, 30),
+          x: Math.round(rect.left + rect.width / 2),
+          y: Math.round(rect.top + rect.height / 2),
+          visible: rect.top >= 0 && rect.top < window.innerHeight
+        });
+      }
+      return out.slice(0, 80);
+    }"""
+    try:
+        items = page.evaluate(js)
+    except Exception as e:
+        return "读不到页面元素：%s" % e
+    if not items:
+        return "页面上没找到可点元素（可能是纯 Canvas 或还没加载完）"
+    lines = []
+    for it in items[:max_items]:
+        hint = ""
+        if it["id"]:
+            hint += " #" + it["id"]
+        lines.append("- <%s> 「%s」%s @(%d,%d)%s" % (
+            it["tag"], it["text"], hint, it["x"], it["y"],
+            "" if it["visible"] else "（需滚动）"))
+    return "页面可交互元素（%d 个）：\n%s" % (len(items), "\n".join(lines))
+
+
 def browser_click(target):
+    """点击：CSS 选择器 → 可见文本 → 按钮角色，三层兜底（混合感知）。"""
     page = _get_page()
     target = target.strip()
-    # 含 CSS 特征按选择器，否则按可见文本点
+    errors = []
+    # 策略 1：CSS 选择器
     if any(c in target for c in ".#[>=") or " " in target:
-        page.locator(target).first.click(timeout=10000)
-    else:
-        page.get_by_text(target, exact=False).first.click(timeout=10000)
-    return "已点击：%s" % target
+        try:
+            page.locator(target).first.click(timeout=8000)
+            return "已点击（选择器）：%s" % target
+        except Exception:
+            errors.append("选择器没点到")
+    # 策略 2：可见文本
+    try:
+        page.get_by_text(target, exact=False).first.click(timeout=8000)
+        return "已点击（文本）：%s" % target
+    except Exception:
+        errors.append("文本没匹配到")
+    # 策略 3：按钮/链接角色
+    for role in ("button", "link", "menuitem"):
+        try:
+            page.get_by_role(role, name=target).first.click(timeout=4000)
+            return "已点击（%s 角色）：%s" % (role, target)
+        except Exception:
+            pass
+    errors.append("角色也没找到")
+    return ("点不到「%s」（%s）。建议先调 browser_get_elements 看看页面上到底有哪些可点元素，"
+            "或用 view_screen 看一眼画面再决定坐标。" % (target, "、".join(errors)))
 
 
 def browser_type(selector, text):
