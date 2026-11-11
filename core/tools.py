@@ -86,6 +86,35 @@ def t_write_file(args):
     return "已写入 %s（%d 字）" % (path, len(args["content"]))
 
 
+def t_edit_file(args):
+    """精确替换文件里的一小段内容（不整文件重写，避免模型把原文改丢）。"""
+    path = os.path.abspath(args.get("path", ""))
+    old_text = args.get("old_text", "")
+    new_text = args.get("new_text", "")
+    if not os.path.exists(path):
+        return "文件不存在：%s" % path
+    if not old_text:
+        return "缺少 old_text（要替换的原文片段）"
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except Exception as e:
+        return "读不了：%s" % e
+    if old_text not in content:
+        return "没找到要替换的原文（请先 read_file 确认内容，old_text 要和文件里一模一样）"
+    # 改前备份
+    try:
+        bak = path + ".bak"
+        shutil.copy2(path, bak)
+    except Exception:
+        pass
+    new_content = content.replace(old_text, new_text, 1)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(new_content)
+    return "已替换 1 处（原文 %d 字 → 新文 %d 字），文件现在 %d 字" % (
+        len(old_text), len(new_text), len(new_content))
+
+
 def t_open_app(args):
     """用系统命令直接打开程序，比找图标双击可靠得多。"""
     name = (args.get("name") or "").strip()
@@ -236,11 +265,20 @@ TOOLS = [
     }},
     {"type": "function", "function": {
         "name": "write_file",
-        "description": "把内容写入本地文件（新建或覆盖）。写代码、写文档、保存结果都用它。",
+        "description": "把内容写入本地文件（新建或覆盖）。只用于新建文件或整文件重写。修改已有文件请优先用 edit_file，避免把原有内容改丢。",
         "parameters": {"type": "object",
                        "properties": {"path": {"type": "string", "description": "目标路径"},
                                       "content": {"type": "string", "description": "完整文件内容"}},
                        "required": ["path", "content"]}
+    }},
+    {"type": "function", "function": {
+        "name": "edit_file",
+        "description": "精确修改已有文件：把文件里的一小段原文(old_text)替换成新内容(new_text)。改样式、改一两行、改配置都用它，比整文件重写安全得多。",
+        "parameters": {"type": "object",
+                       "properties": {"path": {"type": "string", "description": "目标文件路径"},
+                                      "old_text": {"type": "string", "description": "要替换的原文，必须和文件里一模一样"},
+                                      "new_text": {"type": "string", "description": "替换成的新内容"}},
+                       "required": ["path", "old_text", "new_text"]}
     }},
     {"type": "function", "function": {
         "name": "list_dir",
@@ -482,8 +520,8 @@ def select_tools(text):
 
     # 文件 / 命令
     if any(w in t for w in ("文件", "读一下", "写入", "目录", "路径", "命令", "文件夹",
-                            "保存", "删除", "创建", "脚本")):
-        add("read_file", "write_file", "list_dir", "search_files", "run_command")
+                            "保存", "删除", "创建", "脚本", "修改", "改成", "样式", "页面", "网站")):
+        add("read_file", "write_file", "edit_file", "list_dir", "search_files", "run_command")
 
     # 网页 / 浏览器
     if any(w in t for w in ("网页", "网站", "搜索", "百度", "浏览器", "http", "链接", "联网")):
@@ -513,6 +551,7 @@ _IMPL = {
     "run_command": t_run_command,
     "read_file": t_read_file,
     "write_file": t_write_file,
+    "edit_file": t_edit_file,
     "list_dir": t_list_dir,
     "search_files": t_search_files,
     "web_fetch": t_web_fetch,
