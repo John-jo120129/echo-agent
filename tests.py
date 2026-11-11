@@ -17,7 +17,7 @@ import sys
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE_DIR)
 
-from core import llm, tools   # noqa: E402
+from core import agent, llm, tools   # noqa: E402
 
 # 每条：输入 → 期望调用哪个工具（允许多个，因为有些说法本身有歧义）
 CASES = [
@@ -67,12 +67,14 @@ def run(model=None):
     print("=" * 60)
 
     passed, failed, details = 0, 0, []
+    sys_prompt = agent.build_system(cfg)   # 带上完整人格，贴近真实运行环境
     for i, case in enumerate(CASES, 1):
         active = tools.select_tools(case["in"])
         chosen, args = None, ""
         try:
-            msg = llm.call_llm(cfg, [{"role": "user", "content": case["in"]}],
-                               active, temperature=0.2)
+            msg = llm.call_llm(cfg, [{"role": "system", "content": sys_prompt},
+                                     {"role": "user", "content": case["in"]}],
+                               active, temperature=0.0)
             calls = msg.get("tool_calls") or []
             if calls:
                 chosen = calls[0]["function"]["name"]
