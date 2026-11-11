@@ -91,8 +91,29 @@ def _maybe_save_skill(cfg, user_input, call_log, reply):
         md = (r.get("content") or "").strip()
         if not md or len(md) < 80:
             return None
-        first = (md.splitlines()[0] or "").lstrip("# ").strip() or "auto"
-        slug = re.sub(r"[^\w\u4e00-\u9fa5]", "_", first)[:24].strip("_") or "auto"
+        # 模型常忘了写 front matter，缺了它技能列表里就只有名字没有描述。
+        # 这里程序补一个：从正文里抠标题和"适用场景"。
+        if not md.startswith("---"):
+            lines = md.splitlines()
+            title, desc = "", ""
+            for i, ln in enumerate(lines):
+                if ln.startswith("# ") and not title:
+                    title = ln[2:].strip()
+                if "适用" in ln and not desc and i + 1 < len(lines):
+                    desc = lines[i + 1].strip()
+            title = title or "自动技能"
+            desc = (desc or title)[:60]
+            md = ("---\nname: %s\ndescription: %s\nwhen_to_use: %s\n---\n\n%s"
+                  % (title, desc, desc, md))
+        first = (md.split("---")[1] if md.startswith("---") else "")
+        m2 = re.search(r"name:\s*(.+)", first)
+        name_hint = m2.group(1).strip() if m2 else ""
+        if not name_hint:
+            for ln in md.splitlines():
+                if ln.startswith("# "):
+                    name_hint = ln[2:].strip()
+                    break
+        slug = re.sub(r"[^\w\u4e00-\u9fa5]", "_", name_hint or "auto")[:24].strip("_") or "auto"
         d = os.path.join(BASE_DIR, "skills", "auto_" + slug)
         os.makedirs(d, exist_ok=True)
         path = os.path.join(d, "SKILL.md")
