@@ -118,6 +118,32 @@ ollama pull qwen2.5vl:7b        # 看图/视频（可选，6G）
 
 ---
 
+## 🔌 MCP 支持
+
+Echo 的工具可以暴露成 **MCP 服务**，让 Claude Desktop / Cursor 等任何 MCP 客户端直接调用：
+
+```bash
+python mcp_server.py
+```
+
+配置示例（Claude Desktop 的 `claude_desktop_config.json`）：
+```json
+{
+  "mcpServers": {
+    "echo": {
+      "command": "python",
+      "args": ["D:/echo-agent/mcp_server.py"]
+    }
+  }
+}
+```
+
+暴露了 16 个工具：读/写文件、列目录、搜文件、联网搜索、抓网页、浏览器打开/点击/读元素、打开程序、截屏 OCR、双击图标、搜记忆、记记忆、时间。
+
+> 安全：不暴露 `run_command`（任意命令执行），只给查询类和明确定义的操作。
+
+---
+
 ## 🧱 技术栈
 
 | 层 | 用什么 |
