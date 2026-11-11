@@ -59,6 +59,9 @@ header{height:60px;border-bottom:1px solid var(--border);display:flex;align-item
 #sessSel:focus{border-color:var(--accent)}
 #newSess{padding:6px 12px;border:1px solid var(--accent-soft);border-radius:16px;background:#fff;color:var(--accent);font-size:12px;cursor:pointer;white-space:nowrap}
 #newSess:hover{background:var(--accent-soft)}
+#voiceMode{padding:6px 12px;border:1px solid var(--accent-soft);border-radius:16px;background:#fff;color:var(--accent);font-size:12px;cursor:pointer;white-space:nowrap}
+#voiceMode:hover{background:var(--accent-soft)}
+#voiceMode.on{background:var(--accent);color:#fff;border-color:var(--accent)}
 #msgs{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:14px}
 .msg{max-width:82%;padding:11px 15px;border-radius:16px;line-height:1.65;font-size:14px;white-space:pre-wrap;word-break:break-word;box-shadow:0 1px 2px rgba(0,0,0,.04)}
 .user{align-self:flex-end;background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff;border-bottom-right-radius:4px}
@@ -92,6 +95,7 @@ header{height:60px;border-bottom:1px solid var(--border);display:flex;align-item
     <div class="hd-right">
       <select id="sessSel" title="切换会话"></select>
       <button id="newSess" title="开新对话">＋ 新对话</button>
+      <button id="voiceMode" title="语音模式：回复自动朗读，说话可打断">🎧 语音模式</button>
       <a class="star" href="/star" target="_blank">✦ 记忆星球</a>
     </div>
   </header>
@@ -178,6 +182,7 @@ function render(ev){
     if(procBox){ procBox = null; }
     if(curAgent){ curAgent = null; }
     else add('msg agent', ev.text);
+    if (voiceMode) speakAndPlay(ev.text);
   }
 }
 
@@ -254,6 +259,82 @@ mic.onclick = async () => {
     rec.start();
     mic.textContent = '⏹';
   } catch(e) { add('step', '无法访问麦克风：' + e.message); }
+};
+
+// ---- 语音模式 + 实时打断 ----
+let voiceMode = false;
+let ttsAudio = null;
+let vadStream = null, vadCtx = null, vadAnalyser = null, vadRaf = null, bargeCooldown = 0;
+const voiceBtn = document.getElementById('voiceMode');
+
+async function initVadMic(){
+  if (!vadStream) vadStream = await navigator.mediaDevices.getUserMedia({audio:true});
+  if (!vadCtx){
+    vadCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const src = vadCtx.createMediaStreamSource(vadStream);
+    vadAnalyser = vadCtx.createAnalyser();
+    vadAnalyser.fftSize = 512;
+    src.connect(vadAnalyser);
+  }
+}
+
+function startVAD(){
+  if (!vadAnalyser || vadRaf) return;
+  const buf = new Uint8Array(vadAnalyser.frequencyBinCount);
+  const tick = () => {
+    vadAnalyser.getByteFrequencyData(buf);
+    let sum = 0;
+    for (let i = 0; i < buf.length; i++) sum += buf[i];
+    const avg = sum / buf.length;
+    const now = Date.now();
+    // 正在播报 + 听到明显人声 → 立刻闭嘴，转为听
+    if (ttsAudio && !ttsAudio.paused && avg > 35 && now > bargeCooldown){
+      ttsAudio.pause();
+      bargeCooldown = now + 2000;
+      add('step', '（被打断）我听着，你说…');
+      if (!rec || rec.state !== 'recording') mic.click();
+    }
+    vadRaf = requestAnimationFrame(tick);
+  };
+  tick();
+}
+
+function stopVAD(){ if (vadRaf){ cancelAnimationFrame(vadRaf); vadRaf = null; } }
+
+async function speakAndPlay(text){
+  if (!voiceMode || !text) return;
+  try{
+    const r = await fetch('/speak', {method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({text})});
+    if (!r.ok) return;
+    const blob = await r.blob();
+    if (ttsAudio) ttsAudio.pause();
+    ttsAudio = new Audio(URL.createObjectURL(blob));
+    await initVadMic();
+    startVAD();
+    ttsAudio.onended = () => stopVAD();
+    await ttsAudio.play();
+  }catch(e){}
+}
+
+voiceBtn.onclick = async () => {
+  voiceMode = !voiceMode;
+  voiceBtn.classList.toggle('on', voiceMode);
+  voiceBtn.textContent = voiceMode ? '🎧 语音开' : '🎧 语音模式';
+  if (voiceMode){
+    try{
+      await initVadMic();
+      add('step', '语音模式已开：回复会自动朗读，你随时说话可以打断');
+    }catch(e){
+      add('step', '无法访问麦克风：' + e.message);
+      voiceMode = false;
+      voiceBtn.textContent = '🎧 语音模式';
+    }
+  } else {
+    stopVAD();
+    if (ttsAudio) ttsAudio.pause();
+  }
 };
 </script>
 </body>
@@ -347,6 +428,23 @@ class Handler(BaseHTTPRequestHandler):
                     current_sid = rec["id"]
                     history = sessionstore.load_session(current_sid)
             self._json({"current": current_sid, "sessions": sessionstore.list_sessions()})
+            return
+        if self.path == "/speak":
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(length).decode("utf-8"))
+                text = body.get("text", "")
+            except Exception:
+                text = ""
+            audio = voice.tts_bytes(text) if text else b""
+            if not audio:
+                self._json({"error": "语音生成失败（edge-tts 需要联网）"})
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "audio/mpeg")
+            self.send_header("Content-Length", str(len(audio)))
+            self.end_headers()
+            self.wfile.write(audio)
             return
         if self.path == "/chat":
             try:

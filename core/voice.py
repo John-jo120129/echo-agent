@@ -60,6 +60,30 @@ def listen_and_transcribe(seconds=5):
 
 
 # ---------- 语音输出（说） ----------
+def tts_bytes(text, voice="zh-CN-XiaoxiaoNeural"):
+    """生成 mp3 字节（给网页播放用，不落地播放，前端可随时暂停=打断）。"""
+    import asyncio
+    import tempfile
+    try:
+        import edge_tts
+    except ImportError:
+        return b""
+    if not text or not text.strip():
+        return b""
+    path = os.path.join(tempfile.gettempdir(), "echo_tts_tmp.mp3")
+
+    async def _go():
+        c = edge_tts.Communicate(text[:500], voice)
+        await c.save(path)
+
+    try:
+        asyncio.run(_go())
+        with open(path, "rb") as f:
+            return f.read()
+    except Exception:
+        return b""
+
+
 def speak(text, voice="zh-CN-XiaoxiaoNeural"):
     """把文字用中文语音读出来（edge-tts，免费，中文自然）。"""
     import asyncio
