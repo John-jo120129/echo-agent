@@ -82,12 +82,67 @@ def mouse_click(x=None, y=None, button="left"):
     return "已在当前位置点击 %s 键" % button
 
 
-def mouse_double(x=None, y=None):
+def find_control(target):
+    """按文字找控件/桌面图标的屏幕坐标。优先找桌面图标，再找其他窗口。"""
+    try:
+        import uiautomation as auto
+        auto.SetGlobalSearchTimeout(2)
+        root = auto.GetRootControl()
+
+        def search_tree(ctrl, depth, max_depth=10):
+            if depth > max_depth:
+                return None
+            try:
+                for c in ctrl.GetChildren():
+                    try:
+                        name = c.Name or ""
+                        if name and target.lower() in name.lower():
+                            r = c.BoundingRectangle
+                            if r.width() > 0 and r.height() > 0:
+                                return (int((r.left + r.right) // 2),
+                                        int((r.top + r.bottom) // 2))
+                    except Exception:
+                        pass
+                    res = search_tree(c, depth + 1, max_depth)
+                    if res:
+                        return res
+            except Exception:
+                pass
+            return None
+
+        # 1. 优先找桌面（Progman / WorkerW / Program Manager）里的图标
+        for win in root.GetChildren():
+            try:
+                cn = win.ClassName or ""
+                nm = win.Name or ""
+                if cn in ("Progman", "WorkerW") or "Program Manager" in nm:
+                    pt = search_tree(win, 0)
+                    if pt:
+                        return pt
+            except Exception:
+                pass
+
+        # 2. 再找其他窗口
+        for win in root.GetChildren():
+            pt = search_tree(win, 0)
+            if pt:
+                return pt
+        return None
+    except Exception:
+        return None
+
+
+def mouse_double(x=None, y=None, target=None):
+    if target:
+        pt = find_control(target)
+        if not pt:
+            return "没找到叫「%s」的图标/控件，先用 read_controls 或 view_screen 看看它在哪" % target
+        x, y = pt
     if x is not None and y is not None:
+        pyautogui.moveTo(int(x), int(y), duration=0.2)
         pyautogui.doubleClick(int(x), int(y))
-    else:
-        pyautogui.doubleClick()
-    return "已双击"
+        return "已移动并双击 (%d, %d)" % (int(x), int(y))
+    return "缺少坐标：请给 x/y，或给 target（要找的图标/按钮文字）"
 
 
 def mouse_drag(x1, y1, x2, y2):

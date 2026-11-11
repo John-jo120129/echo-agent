@@ -390,9 +390,10 @@ TOOLS = [
     }},
     {"type": "function", "function": {
         "name": "mouse_double",
-        "description": "双击鼠标。用来打开桌面图标、文件、文件夹、程序。给 x/y 就在那个位置双击，不给就在当前位置双击。",
+        "description": "双击鼠标（打开桌面图标/文件/程序）。传 target=图标或按钮的文字即可自动找位置并双击；也可直接给 x/y 坐标。",
         "parameters": {"type": "object",
-                       "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}}}
+                       "properties": {"target": {"type": "string", "description": "要找的图标/按钮文字，如 Blender、WPS"},
+                                      "x": {"type": "integer"}, "y": {"type": "integer"}}}
     }},
     {"type": "function", "function": {
         "name": "mouse_scroll",
@@ -485,7 +486,7 @@ _IMPL = {
     "view_screen": lambda a: computer.view_screen(ctx.get("cfg", {}), a.get("prompt")),
     "mouse_move": lambda a: computer.mouse_move(a.get("x", 0), a.get("y", 0)),
     "mouse_click": lambda a: computer.mouse_click(a.get("x"), a.get("y"), a.get("button", "left")),
-    "mouse_double": lambda a: computer.mouse_double(a.get("x"), a.get("y")),
+    "mouse_double": lambda a: computer.mouse_double(a.get("x"), a.get("y"), a.get("target")),
     "open_app": t_open_app,
     "mouse_scroll": lambda a: computer.mouse_scroll(a.get("amount", 0)),
     "type_text": lambda a: computer.type_text(a.get("text", ""), bool(a.get("enter", False))),
