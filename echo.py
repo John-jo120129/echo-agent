@@ -531,4 +531,12 @@ def _brief(s, limit=80):
 
 
 if __name__ == "__main__":
-    chat(load_config())
+    _cfg = load_config()
+    try:
+        from core import llm as _llm
+        _ok, _msg = _llm.check_ollama()
+        if not _ok:
+            print("\n⚠️  " + _msg + "\n")
+    except Exception:
+        pass
+    chat(_cfg)

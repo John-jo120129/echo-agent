@@ -7,6 +7,16 @@ import urllib.request
 import urllib.error
 
 
+def check_ollama():
+    """检查 Ollama 是否在线，返回 (ok, msg)。启动时提示用。"""
+    try:
+        with urllib.request.urlopen("http://localhost:11434/api/tags", timeout=3) as r:
+            r.read()
+        return True, "Ollama 在线"
+    except Exception as e:
+        return False, ("Ollama 没启动（%s）。请先打开终端执行 ollama serve，再重开 Echo。" % e)
+
+
 def call_llm(cfg, messages, tools, on_token=None, temperature=None):
     """发消息给大脑，返回它的回复（可能带 tool_calls 表示它想动手）。
     传 on_token 回调则走流式：边生成边逐段回调（体验上不用干等）。

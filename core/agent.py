@@ -182,9 +182,16 @@ def run_agent(cfg, user_input, history, emit, max_steps=None):
     call_log = []          # 本次任务的所有工具调用，用于沉淀技能
     active_tools = tools.select_tools(user_input)   # 按意图挑工具，给小模型减负
     for step in range(1, max_steps + 1):
-        msg = llm.call_llm(cfg, messages, active_tools,
-                           on_token=lambda t: emit({"type": "token", "text": t}),
-                           temperature=0.2)   # 工具调用用低温，减少格式漂移
+        try:
+            msg = llm.call_llm(cfg, messages, active_tools,
+                               on_token=lambda t: emit({"type": "token", "text": t}),
+                               temperature=0.2)   # 工具调用用低温，减少格式漂移
+        except Exception as e:
+            err = ("【大脑离线】连不上模型服务（%s）。\n"
+                   "请检查 Ollama 是否在运行：打开终端执行 ollama serve，或重启 Ollama 后再试。") % e
+            emit({"type": "reply", "text": err})
+            history.append({"role": "assistant", "content": err})
+            return err
         calls = msg.get("tool_calls")
         if not calls:
             reply = (msg.get("content") or "").strip()
