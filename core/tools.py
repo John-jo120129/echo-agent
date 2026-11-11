@@ -459,6 +459,56 @@ TOOLS = [
     }},
 ]
 
+def select_tools(text):
+    """按用户意图返回工具子集，减少小模型（7b）的选择负担。
+
+    实测：18 个工具全给时 7b 会"选择困难"、光说不做；只给 2-8 个相关工具时
+    工具调用成功率大幅提升。所以按关键词挑一组相关工具给它。
+    """
+    t = (text or "").lower()
+    names = set()
+
+    def add(*keys):
+        for k in keys:
+            if k in _IMPL:
+                names.add(k)
+
+    # 桌面 / 鼠标 / 屏幕 / 程序
+    if any(w in t for w in ("打开", "双击", "点击", "鼠标", "屏幕", "桌面", "窗口",
+                            "按键", "输入", "键盘", "拖", "滚动", "图标", "程序", "软件")):
+        add("open_app", "mouse_move", "mouse_click", "mouse_double", "mouse_scroll",
+            "read_controls", "read_screen", "view_screen",
+            "type_text", "press_key", "hotkey")
+
+    # 文件 / 命令
+    if any(w in t for w in ("文件", "读一下", "写入", "目录", "路径", "命令", "文件夹",
+                            "保存", "删除", "创建", "脚本")):
+        add("read_file", "write_file", "list_dir", "search_files", "run_command")
+
+    # 网页 / 浏览器
+    if any(w in t for w in ("网页", "网站", "搜索", "百度", "浏览器", "http", "链接", "联网")):
+        add("web_search", "web_fetch", "browser_open", "browser_read",
+            "browser_click", "browser_fill", "browser_screenshot")
+
+    # 知识库 / 记忆
+    if any(w in t for w in ("知识", "记住", "记忆", "回忆", "以前", "之前", "待办", "提醒")):
+        add("search_kb", "remember", "remember_profile", "remember_long",
+            "add_todo", "list_todo", "complete_todo")
+
+    # 视频 / 语音
+    if any(w in t for w in ("视频", "语音", "朗读", "说出来")):
+        add("video_understand", "speak")
+
+    # 没匹配到任何意图 → 全给
+    if not names:
+        return TOOLS
+
+    # 补几个常用兜底工具
+    add("search_kb", "get_datetime", "run_command")
+
+    return [t for t in TOOLS if t["function"]["name"] in names]
+
+
 _IMPL = {
     "run_command": t_run_command,
     "read_file": t_read_file,
