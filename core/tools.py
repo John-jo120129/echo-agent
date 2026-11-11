@@ -13,6 +13,7 @@
 import os
 import re
 import ssl
+import time
 import subprocess
 import json
 import shutil
@@ -27,6 +28,7 @@ from core import skills
 from core import computer
 from core import browser
 from core import video
+from core import voice
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -304,7 +306,7 @@ TOOLS = [
     }},
     {"type": "function", "function": {
         "name": "search_kb",
-        "description": "检索本地知识库（kb/ 文件夹），返回最相关的几段知识。用户的问题涉及知识库内容时先查这里。",
+        "description": "检索你的记忆和本地知识库（kb/ 文件夹），返回最相关的内容。用户说「回想一下/我之前说过什么/你还记得吗/查一下知识库」时用它。",
         "parameters": {"type": "object",
                        "properties": {"query": {"type": "string", "description": "检索问题"}},
                        "required": ["query"]}
@@ -495,6 +497,13 @@ TOOLS = [
                                       "prompt": {"type": "string", "description": "想重点了解视频的什么（可选）"}},
                        "required": ["path"]}
     }},
+    {"type": "function", "function": {
+        "name": "speak",
+        "description": "把文字念出来（语音朗读）。用户说「念出来/读出来/说给我听/朗读」时用它。",
+        "parameters": {"type": "object",
+                       "properties": {"text": {"type": "string", "description": "要念出来的文字"}},
+                       "required": ["text"]}
+    }},
 ]
 
 def select_tools(text):
@@ -529,12 +538,13 @@ def select_tools(text):
             "browser_click", "browser_fill", "browser_screenshot")
 
     # 知识库 / 记忆
-    if any(w in t for w in ("知识", "记住", "记忆", "回忆", "以前", "之前", "待办", "提醒")):
+    if any(w in t for w in ("知识", "记住", "记忆", "回忆", "以前", "之前", "待办", "提醒",
+                            "回想", "说过", "记得", "偏好", "我是谁")):
         add("search_kb", "remember", "remember_profile", "remember_long",
             "add_todo", "list_todo", "complete_todo")
 
     # 视频 / 语音
-    if any(w in t for w in ("视频", "语音", "朗读", "说出来")):
+    if any(w in t for w in ("视频", "语音", "朗读", "说出来", "念", "读出来", "说一句", "播报")):
         add("video_understand", "speak")
 
     # 没匹配到任何意图 → 全给
@@ -542,7 +552,7 @@ def select_tools(text):
         return TOOLS
 
     # 补几个常用兜底工具
-    add("search_kb", "get_datetime", "run_command")
+    add("search_kb", "get_time", "run_command")
 
     return [t for t in TOOLS if t["function"]["name"] in names]
 
@@ -568,6 +578,7 @@ _IMPL = {
     "add_todo": lambda a: memory.add_todo(a.get("task", "")),
     "write_diary": lambda a: memory.write_diary(a.get("title", ""), a.get("content", "")),
     "get_time": lambda a: memory.now_str(),
+    "speak": lambda a: voice.speak(a.get("text", "")),
     "set_reminder": t_set_reminder,
     "screenshot": lambda a: computer.screenshot(),
     "read_screen": lambda a: computer.read_screen(),
@@ -590,22 +601,30 @@ _IMPL = {
 
 
 LOG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                        "data", "action_log.json")
+                        "data", "action_log.jsonl")
 
 
-def _log_action(name, args, result):
-    """把每次工具调用记进 data/action_log.json（安全兜底，可回看它干了啥）。"""
+def _log_action(name, args, result, duration_ms=0):
+    """把每次工具调用追加进 data/action_log.jsonl（结构化，可回放/审计）。
+
+    用 jsonl 追加写：不再每次读写整个文件，日志可以无限增长也不拖慢。
+    """
     try:
-        logs = []
-        if os.path.exists(LOG_PATH):
-            with open(LOG_PATH, "r", encoding="utf-8") as f:
-                logs = json.load(f)
-        logs.append({"time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                     "tool": name, "args": str(args)[:200],
-                     "result": str(result)[:120]})
         os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
-        with open(LOG_PATH, "w", encoding="utf-8") as f:
-            json.dump(logs[-500:], f, ensure_ascii=False, indent=1)
+        txt = str(result)
+        record = {
+            "time": datetime.datetime.now().isoformat(timespec="seconds"),
+            "tool": name,
+            "args": str(args)[:200],
+            "result": txt[:200],
+            "duration_ms": duration_ms,
+            "ok": not any(w in txt for w in
+                          ("失败", "错误", "读不了", "不存在", "没找到", "拒绝", "出错", "未知工具")),
+        }
+        with open(LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
     except Exception:
         pass
 
@@ -625,14 +644,15 @@ def recent_actions(n=20):
 
 
 def run_tool(name, args):
+    t0 = time.time()
     try:
         fn = _IMPL.get(name)
         if not fn:
-            _log_action(name, args, "未知工具")
+            _log_action(name, args, "未知工具", int((time.time() - t0) * 1000))
             return "未知工具：%s" % name
         result = fn(args)
-        _log_action(name, args, result)
+        _log_action(name, args, result, int((time.time() - t0) * 1000))
         return result
     except Exception as e:
-        _log_action(name, args, "出错：%s" % e)
+        _log_action(name, args, "出错：%s" % e, int((time.time() - t0) * 1000))
         return "工具出错：%s" % e

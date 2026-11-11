@@ -7,14 +7,17 @@ import urllib.request
 import urllib.error
 
 
-def call_llm(cfg, messages, tools, on_token=None):
+def call_llm(cfg, messages, tools, on_token=None, temperature=None):
     """发消息给大脑，返回它的回复（可能带 tool_calls 表示它想动手）。
-    传 on_token 回调则走流式：边生成边逐段回调（体验上不用干等）。"""
+    传 on_token 回调则走流式：边生成边逐段回调（体验上不用干等）。
+    temperature 不给就用 cfg 里的（默认 0.7）；工具调用建议传 0.2，减少格式漂移。"""
     url = cfg["api_base"].rstrip("/") + "/chat/completions"
+    temp = temperature if temperature is not None else cfg.get("temperature", 0.7)
     payload = {
         "model": cfg["model"],
         "messages": messages,
         "tools": tools,
+        "temperature": temp,
         "stream": bool(on_token)
     }
     req = urllib.request.Request(

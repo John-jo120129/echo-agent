@@ -151,7 +151,8 @@ def run_agent(cfg, user_input, history, emit, max_steps=None):
     active_tools = tools.select_tools(user_input)   # 按意图挑工具，给小模型减负
     for step in range(1, max_steps + 1):
         msg = llm.call_llm(cfg, messages, active_tools,
-                           on_token=lambda t: emit({"type": "token", "text": t}))
+                           on_token=lambda t: emit({"type": "token", "text": t}),
+                           temperature=0.2)   # 工具调用用低温，减少格式漂移
         calls = msg.get("tool_calls")
         if not calls:
             reply = (msg.get("content") or "").strip()
