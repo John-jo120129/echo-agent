@@ -1,10 +1,17 @@
 @echo off
-chcp 65001 >nul
-title Echo
+chcp 936 >nul
+title Echo 回声
 cd /d "%~dp0"
-set PY="C:\Users\jiangchengzhi\AppData\Local\Programs\Python\Python311\python.exe"
-if exist %PY% (
-    %PY% echo.py
+
+python --version >nul 2>nul
+if errorlevel 1 (
+    py --version >nul 2>nul
+    if errorlevel 1 (
+        echo [错误] 没找到 Python，请先安装 Python 3.10+ 并勾选 Add Python to PATH
+        pause
+        exit /b
+    )
+    py echo.py
 ) else (
     python echo.py
 )

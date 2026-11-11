@@ -1,11 +1,18 @@
 @echo off
-chcp 65001 >nul
-title Echo Web
+chcp 936 >nul
+title Echo Web 网页版
 cd /d "%~dp0"
-where python >nul 2>nul
-if %errorlevel%==0 (
-    python webui.py
+
+python --version >nul 2>nul
+if errorlevel 1 (
+    py --version >nul 2>nul
+    if errorlevel 1 (
+        echo [错误] 没找到 Python，请先安装 Python 3.10+ 并勾选 Add Python to PATH
+        pause
+        exit /b
+    )
+    py webui.py
 ) else (
-    "C:\Users\jiangchengzhi\AppData\Local\Programs\Python\Python311\python.exe" webui.py
+    python webui.py
 )
 pause
