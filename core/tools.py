@@ -560,11 +560,12 @@ def select_tools(text):
                 names.add(k)
 
     # 桌面 / 鼠标 / 屏幕 / 程序
-    if any(w in t for w in ("打开", "双击", "点击", "鼠标", "屏幕", "桌面", "窗口",
-                            "按键", "输入", "键盘", "拖", "滚动", "图标", "程序", "软件")):
+    if any(w in t for w in ("打开", "双击", "点击", "鼠标", "屏幕", "屏", "桌面", "窗口",
+                            "按键", "按", "输入", "打字", "打上", "键盘", "拖", "滚动",
+                            "图标", "程序", "软件", "截")):
         add("open_app", "mouse_move", "mouse_click", "mouse_double", "mouse_scroll",
-            "read_controls", "read_screen", "view_screen",
-            "type_text", "press_key", "hotkey")
+            "read_controls", "read_screen", "view_screen", "screenshot",
+            "type_text", "press_key")
 
     # 文件 / 命令
     if any(w in t for w in ("文件", "读一下", "写入", "目录", "路径", "命令", "文件夹",
@@ -572,15 +573,19 @@ def select_tools(text):
         add("read_file", "write_file", "edit_file", "list_dir", "search_files", "run_command")
 
     # 网页 / 浏览器
-    if any(w in t for w in ("网页", "网站", "搜索", "百度", "浏览器", "http", "链接", "联网")):
+    if any(w in t for w in ("网页", "网站", "搜索", "搜", "百度", "浏览器", "http", "链接", "联网")):
         add("web_search", "web_fetch", "browser_open", "browser_read",
             "browser_click", "browser_type", "browser_get_elements", "browser_screenshot")
 
-    # 知识库 / 记忆
+    # 知识库 / 记忆 / 待办 / 提醒 / 日记
     if any(w in t for w in ("知识", "记住", "记忆", "回忆", "以前", "之前", "待办", "提醒",
-                            "回想", "说过", "记得", "偏好", "我是谁")):
-        add("search_kb", "remember", "remember_profile", "remember_long",
-            "add_todo", "list_todo", "complete_todo")
+                            "回想", "说过", "记得", "偏好", "我是谁", "日记", "记成", "长期")):
+        add("search_kb", "search_memory", "remember", "remember_profile", "remember_long",
+            "add_todo", "list_todo", "complete_todo", "set_reminder", "write_diary")
+
+    # 技能
+    if any(w in t for w in ("技能", "skill")):
+        add("list_skills", "use_skill")
 
     # 视频 / 语音
     if any(w in t for w in ("视频", "语音", "朗读", "说出来", "念", "读出来", "说一句", "播报")):

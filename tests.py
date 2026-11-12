@@ -41,6 +41,21 @@ CASES = [
     {"in": "向下滚动 5 格", "expect": ["mouse_scroll"]},
     {"in": "把鼠标移到 100,100", "expect": ["mouse_move"]},
     {"in": "截一张当前网页的图", "expect": ["browser_screenshot"]},
+    # ---- 第二批：覆盖剩下的工具 ----
+    {"in": "把 config.json 里的 14b 改成 7b", "expect": ["edit_file", "read_file"]},
+    {"in": "在项目里搜一下哪个文件带 TODO 标记", "expect": ["search_files"]},
+    {"in": "你还记得我喜欢什么吗", "expect": ["search_memory", "search_kb"]},
+    {"in": "把这件事记成长期记忆：下周三要考试", "expect": ["remember_long", "remember"]},
+    {"in": "记住我生日是 3 月 5 号", "expect": ["remember_profile", "remember"]},
+    {"in": "现在有哪些技能可以用", "expect": ["list_skills"]},
+    {"in": "加载数据分析技能", "expect": ["use_skill", "list_skills"]},
+    {"in": "加个待办：明天交作业", "expect": ["add_todo"]},
+    {"in": "写篇日记：今天有点累", "expect": ["write_diary"]},
+    {"in": "20 分钟后提醒我喝水", "expect": ["set_reminder"]},
+    {"in": "截个屏", "expect": ["screenshot", "read_screen"]},
+    {"in": "看看当前窗口有哪些按钮", "expect": ["read_controls"]},
+    {"in": "列出这个网页上能点的东西", "expect": ["browser_get_elements"]},
+    {"in": "问我选哪个方案，选项给：方案A、方案B", "expect": ["ask_user"]},
 ]
 
 
