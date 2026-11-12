@@ -128,6 +128,17 @@ ollama pull qwen2.5vl:7b        # 看图/视频（可选，6G）
 - 8G 显存跑 7b 刚好，14b 会有一半跑 CPU（慢但更聪明）
 - 换模型：`/model qwen2.5:7b`
 
+### `git push` 连不上 GitHub（代理只放行 api.github.com）
+正常情况：`git push origin master` 就行。如果本机代理挂了、只有 `api.github.com` 能通（`github.com` 返回 502/超时），用仓库自带的备用通道：
+
+```bash
+GH_TOKEN=$(gh auth token) python push_via_api.py --apply
+```
+
+它走 GitHub Git Data API 逐层重建 blob / tree / commit，逐项校验 SHA，**推上去的提交哈希与本地完全一致**，最后以 fast-forward 更新 `refs/heads/master` 并对齐本地 `origin/master`。不加 `--apply` 是干跑，只创建对象做校验、不动远端分支。
+
+需要装并登录 [gh CLI](https://cli.github.com/)（`gh auth login`）。代理默认读环境变量 `HTTPS_PROXY`，也可显式指定：`ECHO_GH_PROXY=http://127.0.0.1:7897 python push_via_api.py --apply`。
+
 ---
 
 ## 💬 弹窗交互（网页版）
