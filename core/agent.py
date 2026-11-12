@@ -206,10 +206,27 @@ def _compress_history(cfg, history):
     return history[-24:]
 
 
+SIMPLE_HINTS = ("几点", "时间", "日期", "星期", "截屏", "截图", "计算", "算一下",
+                "打开", "关闭", "现在几")
+
+
+def _is_simple_task(text):
+    """判断是不是简单任务：短句 + 单意图，不用走规划/反思。
+
+    实测「现在几点」走完整三阶段要 25 秒，跳过规划/反思能省 20 秒。
+    """
+    t = (text or "").strip()
+    if not t or len(t) > 14:
+        return False
+    return any(w in t for w in SIMPLE_HINTS) or len(t) <= 6
+
+
 def run_agent(cfg, user_input, history, emit, max_steps=None):
     """执行一次完整任务，emit(event) 推送过程事件。返回最终回复文本。"""
     max_steps = max_steps or MAX_STEPS
     multi = cfg.get("multi_agent", True)
+    if multi and _is_simple_task(user_input):
+        multi = False   # 简单任务直接干，别规划半天
     plan = ""
     task_id = taskstore.start_task(user_input)   # 任务持久化：开跑就落盘
     content = _inject_knowledge(user_input)
