@@ -82,6 +82,16 @@ PAGE = r"""<!DOCTYPE html>
 <title>回声 Echo · 网页版</title>
 <style>
 :root{--bg:#f0f1f6;--panel:#ffffff;--border:#e6e6e8;--text:#1a1a1c;--muted:#6b6b72;--accent:#4f46e5;--accent-2:#7c3aed;--accent-soft:#eef0ff;}
+body.dark{--bg:#15161a;--panel:#1e1f25;--border:#2c2e36;--text:#e6e6ea;--muted:#9a9aa3;--accent:#818cf8;--accent-2:#a78bfa;--accent-soft:#2a2d3d}
+body.dark{background:linear-gradient(180deg,#1a1b22 0%,#15161a 45%)}
+body.dark header,body.dark #input{background:var(--panel)}
+body.dark .agent{background:#26272e}
+body.dark .step,body.dark .process summary{background:#2a2b33}
+body.dark #sessSel,body.dark #newSess,body.dark #delSess,body.dark #voiceMode,body.dark #mic,body.dark #imgBtn,body.dark #themeBtn{background:#1e1f25;color:var(--text)}
+body.dark #input textarea{background:#15161a;color:var(--text)}
+body.dark .modal{background:#1e1f25}
+body.dark .modal-opts button{background:#26272e;color:var(--text)}
+body.dark pre.code{background:#15161a;border-color:#2c2e36;color:#e6e6ea}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:linear-gradient(180deg,#e9ebff 0%,#f7f7f8 45%);font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:var(--text)}
 #app{max-width:860px;height:100vh;margin:0 auto;display:flex;flex-direction:column;background:var(--panel);box-shadow:0 0 48px rgba(79,70,229,.10)}
@@ -97,11 +107,19 @@ header{height:60px;border-bottom:1px solid var(--border);display:flex;align-item
 #sessSel:focus{border-color:var(--accent)}
 #newSess{padding:6px 12px;border:1px solid var(--accent-soft);border-radius:16px;background:#fff;color:var(--accent);font-size:12px;cursor:pointer;white-space:nowrap}
 #newSess:hover{background:var(--accent-soft)}
+#delSess{padding:6px 10px;border:1px solid var(--border);border-radius:16px;background:#fff;font-size:12px;cursor:pointer}
+#delSess:hover{border-color:#e5484d;color:#e5484d}
+#themeBtn{padding:6px 10px;border:1px solid var(--border);border-radius:16px;background:#fff;font-size:12px;cursor:pointer}
+#themeBtn:hover{border-color:var(--accent)}
 #voiceMode{padding:6px 12px;border:1px solid var(--accent-soft);border-radius:16px;background:#fff;color:var(--accent);font-size:12px;cursor:pointer;white-space:nowrap}
 #voiceMode:hover{background:var(--accent-soft)}
 #voiceMode.on{background:var(--accent);color:#fff;border-color:var(--accent)}
 #msgs{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:14px}
-.msg{max-width:82%;padding:11px 15px;border-radius:16px;line-height:1.65;font-size:14px;white-space:pre-wrap;word-break:break-word;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.msg{max-width:82%;padding:11px 15px;border-radius:16px;line-height:1.65;font-size:14px;white-space:pre-wrap;word-break:break-word;box-shadow:0 1px 2px rgba(0,0,0,.04);position:relative}
+.copy-btn{position:absolute;top:6px;right:8px;opacity:0;border:none;background:rgba(0,0,0,.08);border-radius:6px;font-size:11px;cursor:pointer;padding:2px 6px;transition:.15s}
+.user .copy-btn{background:rgba(255,255,255,.25)}
+.msg:hover .copy-btn{opacity:1}
+pre.code{background:#f6f8fa;border:1px solid #e5e7eb;border-radius:8px;padding:10px;font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.5;overflow-x:auto;margin:6px 0;white-space:pre-wrap;word-break:break-word;color:#1a1a1c}
 .user{align-self:flex-end;background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff;border-bottom-right-radius:4px}
 .agent{align-self:flex-start;background:#f5f5f7;border-bottom-left-radius:4px}
 .phase{align-self:center;font-size:12px;color:var(--accent);padding:3px 12px;border-radius:12px;background:var(--accent-soft)}
@@ -144,7 +162,9 @@ header{height:60px;border-bottom:1px solid var(--border);display:flex;align-item
     <div class="hd-right">
       <select id="sessSel" title="切换会话"></select>
       <button id="newSess" title="开新对话">＋ 新对话</button>
+      <button id="delSess" title="删除当前会话">🗑</button>
       <button id="voiceMode" title="语音模式：回复自动朗读，说话可打断">🎧 语音模式</button>
+      <button id="themeBtn" title="深色/浅色">🌙</button>
       <a class="star" href="/star" target="_blank">✦ 记忆星球</a>
     </div>
   </header>
@@ -171,7 +191,38 @@ const send = document.getElementById('send');
 
 function add(cls, text){
   const d = document.createElement('div');
-  d.className = cls; d.textContent = text;
+  d.className = cls;
+  const isMsg = cls.indexOf('msg') >= 0;
+  if (isMsg && text && text.indexOf('```') >= 0){
+    // 简单代码块渲染（``` 围栏）
+    text.split('```').forEach((p, i) => {
+      if (i % 2 === 1){
+        const pre = document.createElement('pre');
+        pre.className = 'code';
+        pre.textContent = p.replace(/^[a-zA-Z0-9_+-]*\n/, '');
+        d.appendChild(pre);
+      } else if (p){
+        const sp = document.createElement('span');
+        sp.textContent = p;
+        d.appendChild(sp);
+      }
+    });
+  } else {
+    d.textContent = text;
+  }
+  if (isMsg){
+    const btn = document.createElement('button');
+    btn.className = 'copy-btn';
+    btn.textContent = '📋'; btn.title = '复制';
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      navigator.clipboard.writeText(text || '').then(() => {
+        btn.textContent = '✓';
+        setTimeout(() => { btn.textContent = '📋'; }, 1200);
+      }).catch(() => {});
+    };
+    d.appendChild(btn);
+  }
   msgs.appendChild(d); msgs.scrollTop = msgs.scrollHeight;
   return d;
 }
@@ -357,7 +408,30 @@ newSessBtn.onclick = async () => {
   }catch(e){}
 };
 
+const delSessBtn = document.getElementById('delSess');
+delSessBtn.onclick = async () => {
+  if (!sessSel.value) return;
+  if (!window.confirm('删除当前会话？删除后不可恢复')) return;
+  try{
+    await fetch('/sessions/delete', {method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({sid: sessSel.value})});
+    renderHistory([]);
+    await loadSessions(true);
+  }catch(e){}
+};
+
 loadSessions(true);
+
+// ---- 深色模式 ----
+const themeBtn = document.getElementById('themeBtn');
+function applyTheme(dark){
+  document.body.classList.toggle('dark', dark);
+  themeBtn.textContent = dark ? '☀️' : '🌙';
+  try{ localStorage.setItem('echo_theme', dark ? 'dark' : 'light'); }catch(e){}
+}
+themeBtn.onclick = () => applyTheme(!document.body.classList.contains('dark'));
+applyTheme(localStorage.getItem('echo_theme') === 'dark');
 
 send.onclick = ask;
 inp.addEventListener('keydown', e => { if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); ask(); } });
@@ -373,17 +447,27 @@ mic.onclick = async () => {
     rec.ondataavailable = e => chunks.push(e.data);
     rec.onstop = async () => {
       mic.textContent = '🎤';
+      stopRecVAD();
       add('step', '正在识别语音…');
       try {
         const blob = new Blob(chunks, {type: rec.mimeType || 'audio/webm'});
         const resp = await fetch('/listen', {method:'POST', body: blob});
         const data = await resp.json();
-        if (data.text) { inp.value = data.text; add('msg agent', '我听到：「' + data.text + '」'); }
+        if (data.text) {
+          add('msg agent', '我听到：「' + data.text + '」');
+          inp.value = data.text;
+          if (voiceMode) ask();   // 语音模式：说完直接发，不用再点
+        }
         else add('step', '没识别出内容');
       } catch(e) { add('step', '语音识别失败：' + e); }
     };
     rec.start();
     mic.textContent = '⏹';
+    // 语音模式下：静音 900ms 自动结束录音（不用手动点停止）
+    if (voiceMode) {
+      try { await initVadMic(); } catch(e){}
+      startRecVAD();
+    }
   } catch(e) { add('step', '无法访问麦克风：' + e.message); }
 };
 
@@ -426,6 +510,28 @@ function startVAD(){
 }
 
 function stopVAD(){ if (vadRaf){ cancelAnimationFrame(vadRaf); vadRaf = null; } }
+
+// 录音时的静音检测：说完了（静音 900ms）自动停止
+let recVadTimer = null;
+function startRecVAD(){
+  if (!vadAnalyser || recVadTimer) return;
+  const buf = new Uint8Array(vadAnalyser.frequencyBinCount);
+  let silence = 0;
+  recVadTimer = setInterval(() => {
+    if (!rec || rec.state !== 'recording') { stopRecVAD(); return; }
+    vadAnalyser.getByteFrequencyData(buf);
+    let sum = 0;
+    for (let i = 0; i < buf.length; i++) sum += buf[i];
+    const avg = sum / buf.length;
+    if (avg < 12) {
+      silence += 100;
+      if (silence >= 900){ stopRecVAD(); if (rec.state === 'recording') rec.stop(); }
+    } else {
+      silence = 0;
+    }
+  }, 100);
+}
+function stopRecVAD(){ if (recVadTimer){ clearInterval(recVadTimer); recVadTimer = null; } }
 
 async function speakAndPlay(text){
   if (!voiceMode || !text) return;
