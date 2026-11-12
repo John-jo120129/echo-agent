@@ -114,6 +114,7 @@ header{height:60px;border-bottom:1px solid var(--border);display:flex;align-item
 #voiceMode{padding:6px 12px;border:1px solid var(--accent-soft);border-radius:16px;background:#fff;color:var(--accent);font-size:12px;cursor:pointer;white-space:nowrap}
 #voiceMode:hover{background:var(--accent-soft)}
 #voiceMode.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+#voiceSel{font-size:12px;padding:5px 6px;border:1px solid var(--border);border-radius:10px;background:#fff;color:var(--text);display:none;outline:none;cursor:pointer}
 #msgs{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:14px}
 .msg{max-width:82%;padding:11px 15px;border-radius:16px;line-height:1.65;font-size:14px;white-space:pre-wrap;word-break:break-word;box-shadow:0 1px 2px rgba(0,0,0,.04);position:relative}
 .copy-btn{position:absolute;top:6px;right:8px;opacity:0;border:none;background:rgba(0,0,0,.08);border-radius:6px;font-size:11px;cursor:pointer;padding:2px 6px;transition:.15s}
@@ -180,6 +181,14 @@ pre.code{background:#f6f8fa;border:1px solid #e5e7eb;border-radius:8px;padding:1
       <select id="sessSel" title="切换会话"></select>
       <button id="newSess" title="开新对话">＋ 新对话</button>
       <button id="delSess" title="删除当前会话">🗑</button>
+      <select id="voiceSel" title="音色（语音模式开启后显示）">
+        <option value="zh-CN-XiaoxiaoNeural">晓晓（女）</option>
+        <option value="zh-CN-YunxiNeural">云希（男）</option>
+        <option value="zh-CN-XiaoyiNeural">晓伊（女·可爱）</option>
+        <option value="zh-CN-YunyangNeural">云扬（男·播音）</option>
+        <option value="zh-CN-liaoning-XiaobeiNeural">晓北（东北话）</option>
+        <option value="zh-CN-shaanxi-XiaoniNeural">晓妮（陕西话）</option>
+      </select>
       <button id="voiceMode" title="语音模式：回复自动朗读，说话可打断">🎧 语音模式</button>
       <button id="schedBtn" title="定时任务">⏰</button>
       <button id="themeBtn" title="深色/浅色">🌙</button>
@@ -465,6 +474,16 @@ function applyTheme(dark){
 themeBtn.onclick = () => applyTheme(!document.body.classList.contains('dark'));
 applyTheme(localStorage.getItem('echo_theme') === 'dark');
 
+// ---- 记住音色选择 ----
+const voiceSelEl = document.getElementById('voiceSel');
+try{
+  const sv = localStorage.getItem('echo_voice');
+  if (sv) voiceSelEl.value = sv;
+}catch(e){}
+voiceSelEl.onchange = () => {
+  try{ localStorage.setItem('echo_voice', voiceSelEl.value); }catch(e){}
+};
+
 // ---- 定时任务 ----
 const schedBtn = document.getElementById('schedBtn');
 const schedModal = document.getElementById('schedModal');
@@ -622,9 +641,10 @@ function stopRecVAD(){ if (recVadTimer){ clearInterval(recVadTimer); recVadTimer
 async function speakAndPlay(text){
   if (!voiceMode || !text) return;
   try{
+    const vs = document.getElementById('voiceSel');
     const r = await fetch('/speak', {method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({text})});
+      body: JSON.stringify({text, voice: vs ? vs.value : ''})});
     if (!r.ok) return;
     const blob = await r.blob();
     if (ttsAudio) ttsAudio.pause();
@@ -640,6 +660,8 @@ voiceBtn.onclick = async () => {
   voiceMode = !voiceMode;
   voiceBtn.classList.toggle('on', voiceMode);
   voiceBtn.textContent = voiceMode ? '🎧 语音开' : '🎧 语音模式';
+  const vs = document.getElementById('voiceSel');
+  if (vs) vs.style.display = voiceMode ? 'block' : 'none';
   if (voiceMode){
     try{
       await initVadMic();
@@ -835,9 +857,10 @@ class Handler(BaseHTTPRequestHandler):
                 length = int(self.headers.get("Content-Length", 0))
                 body = json.loads(self.rfile.read(length).decode("utf-8"))
                 text = body.get("text", "")
+                vname = body.get("voice") or "zh-CN-XiaoxiaoNeural"
             except Exception:
-                text = ""
-            audio = voice.tts_bytes(text) if text else b""
+                text, vname = "", "zh-CN-XiaoxiaoNeural"
+            audio = voice.tts_bytes(text, vname) if text else b""
             if not audio:
                 self._json({"error": "语音生成失败（edge-tts 需要联网）"})
                 return
