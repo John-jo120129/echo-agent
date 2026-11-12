@@ -129,7 +129,10 @@ pre.code{background:#f6f8fa;border:1px solid #e5e7eb;border-radius:8px;padding:1
 .process summary{cursor:pointer;user-select:none;color:var(--muted);padding:3px 10px;background:#f0f0f2;border-radius:8px;display:inline-block;list-style:none}
 .process summary::-webkit-details-marker{display:none}
 .process summary:hover{color:var(--accent)}
-.process .step{margin-top:6px}
+.process .step{margin-top:6px;position:relative;padding-left:14px}
+.process .step::before{content:'';position:absolute;left:2px;top:7px;width:6px;height:6px;border-radius:50%;background:var(--accent)}
+.process .step::after{content:'';position:absolute;left:4.5px;top:16px;bottom:-7px;width:1px;background:var(--border)}
+.process .step:last-child::after{display:none}
 #input{flex:none;border-top:1px solid var(--border);padding:12px;display:flex;gap:10px;background:#fff}
 #input textarea{flex:1;height:52px;resize:none;border:1px solid var(--border);border-radius:12px;padding:12px;font-size:14px;font-family:inherit;outline:none}
 #input textarea:focus{border-color:var(--accent)}
@@ -164,6 +167,7 @@ pre.code{background:#f6f8fa;border:1px solid #e5e7eb;border-radius:8px;padding:1
       <button id="newSess" title="开新对话">＋ 新对话</button>
       <button id="delSess" title="删除当前会话">🗑</button>
       <button id="voiceMode" title="语音模式：回复自动朗读，说话可打断">🎧 语音模式</button>
+      <button id="schedBtn" title="定时任务">⏰</button>
       <button id="themeBtn" title="深色/浅色">🌙</button>
       <a class="star" href="/star" target="_blank">✦ 记忆星球</a>
     </div>
@@ -182,6 +186,20 @@ pre.code{background:#f6f8fa;border:1px solid #e5e7eb;border-radius:8px;padding:1
     <div class="modal-title" id="mTitle">需要你确认</div>
     <div class="modal-q" id="mQ"></div>
     <div class="modal-opts" id="mOpts"></div>
+  </div>
+</div>
+<div id="schedModal" class="modal-mask">
+  <div class="modal">
+    <div class="modal-title">定时任务（每天到点自动执行）</div>
+    <div id="schedList" style="margin:10px 0 14px;max-height:220px;overflow-y:auto"></div>
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <input id="schedTime" placeholder="08:00" style="width:76px;padding:8px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text)">
+      <input id="schedTask" placeholder="任务内容（如：汇报今日天气）" style="flex:1;padding:8px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text)">
+    </div>
+    <div class="modal-opts">
+      <button class="primary" onclick="addSchedule()">添加</button>
+      <button onclick="document.getElementById('schedModal').classList.remove('show')">关闭</button>
+    </div>
   </div>
 </div>
 <script>
@@ -433,6 +451,60 @@ function applyTheme(dark){
 themeBtn.onclick = () => applyTheme(!document.body.classList.contains('dark'));
 applyTheme(localStorage.getItem('echo_theme') === 'dark');
 
+// ---- 定时任务 ----
+const schedBtn = document.getElementById('schedBtn');
+const schedModal = document.getElementById('schedModal');
+const schedList = document.getElementById('schedList');
+
+async function loadSchedule(){
+  try{
+    const d = await (await fetch('/schedule')).json();
+    schedList.innerHTML = '';
+    if (!d.items || !d.items.length){
+      const e = document.createElement('div');
+      e.style.cssText = 'color:var(--muted);font-size:13px';
+      e.textContent = '还没有定时任务';
+      schedList.appendChild(e);
+      return;
+    }
+    (d.items || []).forEach((s, i) => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;gap:10px';
+      const span = document.createElement('span');
+      span.style.cssText = 'flex:1;word-break:break-all';
+      span.textContent = s.time + ' · ' + s.task;
+      const del = document.createElement('button');
+      del.textContent = '删';
+      del.style.cssText = 'border:none;background:none;color:#e5484d;cursor:pointer;font-size:12px;flex:none';
+      del.onclick = async () => {
+        try{
+          await fetch('/schedule/delete', {method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({index: i})});
+          loadSchedule();
+        }catch(e){}
+      };
+      row.appendChild(span); row.appendChild(del);
+      schedList.appendChild(row);
+    });
+  }catch(e){}
+}
+
+async function addSchedule(){
+  const time = document.getElementById('schedTime').value.trim();
+  const task = document.getElementById('schedTask').value.trim();
+  if (!time || !task) return;
+  try{
+    await fetch('/schedule/add', {method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({time, task})});
+    document.getElementById('schedTask').value = '';
+    loadSchedule();
+  }catch(e){}
+}
+
+schedBtn.onclick = () => { loadSchedule(); schedModal.classList.add('show'); };
+
 send.onclick = ask;
 inp.addEventListener('keydown', e => { if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); ask(); } });
 
@@ -588,6 +660,33 @@ def _describe_image(cfg, data_url):
         return ""
 
 
+def _scheduler_thread():
+    """网页版定时任务线程：到点自动执行，结果追加进当前会话。"""
+    import datetime as _dt
+    import time as _time
+    while True:
+        try:
+            now = _dt.datetime.now()
+            hm = now.strftime("%H:%M")
+            today = now.strftime("%Y-%m-%d")
+            items = memory.load_schedule()
+            changed = False
+            for s in items:
+                if s.get("time") == hm and s.get("last_run") != today:
+                    try:
+                        agent.run_agent(cfg, s.get("task", ""), history, lambda e: None)
+                    except Exception:
+                        pass
+                    s["last_run"] = today
+                    changed = True
+            if changed:
+                memory.save_schedule(items)
+                sessionstore.save_session(current_sid, history)
+        except Exception:
+            pass
+        _time.sleep(30)
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
@@ -622,6 +721,8 @@ class Handler(BaseHTTPRequestHandler):
                         "messages": [{"role": m.get("role"),
                                       "content": (m.get("content") or "")[:3000]}
                                      for m in history if m.get("role") in ("user", "assistant")]})
+        elif self.path == "/schedule":
+            self._json({"items": memory.load_schedule()})
         elif self.path == "/star":
             try:
                 path = generate_star_html()
@@ -675,6 +776,31 @@ class Handler(BaseHTTPRequestHandler):
                     current_sid = rec["id"]
                     history = sessionstore.load_session(current_sid)
             self._json({"current": current_sid, "sessions": sessionstore.list_sessions()})
+            return
+        if self.path == "/schedule/add":
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(length).decode("utf-8"))
+                t = (body.get("time") or "").strip()
+                task = (body.get("task") or "").strip()
+            except Exception:
+                t, task = "", ""
+            if t and task:
+                memory.add_schedule(t, task)
+            self._json({"items": memory.load_schedule()})
+            return
+        if self.path == "/schedule/delete":
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(length).decode("utf-8"))
+                idx = body.get("index")
+            except Exception:
+                idx = None
+            items = memory.load_schedule()
+            if isinstance(idx, int) and 0 <= idx < len(items):
+                items.pop(idx)
+                memory.save_schedule(items)
+            self._json({"items": memory.load_schedule()})
             return
         if self.path == "/answer":
             try:
@@ -777,6 +903,7 @@ def _lan_ip():
 
 def main():
     server = ThreadingHTTPServer((HOST, PORT), Handler)
+    threading.Thread(target=_scheduler_thread, daemon=True).start()   # 定时任务
     lan = _lan_ip()
     print("=" * 48)
     print("  回声 Echo 网页版已启动")
