@@ -152,7 +152,21 @@ pre.code{background:#f6f8fa;border:1px solid #e5e7eb;border-radius:8px;padding:1
 .modal-opts button{padding:9px 16px;border:1px solid var(--border);border-radius:10px;background:#fff;font-size:14px;cursor:pointer;transition:.15s}
 .modal-opts button:hover{border-color:var(--accent);color:var(--accent)}
 .modal-opts button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
-@media(max-width:600px){.star{font-size:11px;padding:4px 8px}.brand .sub{display:none}#input button{width:64px}.msg{max-width:90%}}
+@media(max-width:640px){
+  header{padding:0 10px;height:52px}
+  .brand h1{font-size:14px}.brand .sub{display:none}
+  .hd-right{gap:4px}
+  #sessSel{max-width:80px;font-size:11px;padding:4px 6px}
+  #newSess,#delSess,#schedBtn,#themeBtn{font-size:11px;padding:4px 7px}
+  #voiceMode{font-size:11px;padding:4px 7px}
+  .star{display:none}
+  #msgs{padding:12px;gap:10px}
+  .msg{max-width:92%;font-size:13px;padding:9px 12px}
+  #input{padding:8px;gap:6px}
+  #input textarea{height:44px;font-size:13px;padding:9px}
+  #input button{width:auto;padding:0 10px;font-size:12px}
+  #mic,#imgBtn{width:40px;padding:0}
+}
 </style>
 </head>
 <body>
